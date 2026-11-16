@@ -3,6 +3,8 @@ using CameraAnalytics.Application.Common;
 
 namespace CameraAnalytics.Application.Analytics;
 
+public sealed record VideoReportBounds(long? VideoLoop, long? FirstSourceTimeMs, long? LastSourceTimeMs);
+
 public sealed class ReportTimeline(ReportPeriod period, NumericWindow window, TimeZoneInfo zone)
 {
     public ReportPeriod Period { get; } = period;
@@ -69,7 +71,7 @@ public sealed class ReportTimeline(ReportPeriod period, NumericWindow window, Ti
     }
 
     public static ReportTimeline Create(ReportFilter filter, AnalyticsOptions options, DateTime utcNow, string zoneId,
-        SessionData? session)
+        SessionData? session, VideoReportBounds? bounds = null)
     {
         var source = filter.SourceType ?? session?.SourceType ?? "live";
         if ((session is not null && source != session.SourceType) || source is not ("live" or "video_file"))
@@ -85,18 +87,21 @@ public sealed class ReportTimeline(ReportPeriod period, NumericWindow window, Ti
 
         if (video)
         {
-            if (session is null || filter.From.HasValue || filter.To.HasValue)
+            if (session is null || bounds is null || filter.From.HasValue || filter.To.HasValue)
                 throw ApiError.Invalid("Video reports require a session and source-time bounds in milliseconds.");
-            if (session.FirstSourceTimeMs is null && filter.FromSourceTimeMs is null && filter.ToSourceTimeMs is null)
-                return new(new(source, "sourceTime", interval, zoneId, null, null, null, null),
+            if (bounds.FirstSourceTimeMs is null && filter.FromSourceTimeMs is null && filter.ToSourceTimeMs is null)
+                return new(new(source, "sourceTime", interval, zoneId, null, null, null, null, bounds.VideoLoop),
                     new(0, 0), TimeZoneInfo.Utc);
-            var start = filter.FromSourceTimeMs ?? session.FirstSourceTimeMs ?? 0;
-            var last = session.LastSourceTimeMs ?? start;
+            var start = filter.FromSourceTimeMs ?? bounds.FirstSourceTimeMs ?? 0;
+            var last = bounds.LastSourceTimeMs ?? start;
             var end = filter.ToSourceTimeMs ?? (last < long.MaxValue ? last + 1 : last);
             Verify(start, end, maxMs, maxDays, true);
-            return new(new(source, "sourceTime", interval, zoneId, null, null, start, end), new(start, end), TimeZoneInfo.Utc);
+            return new(new(source, "sourceTime", interval, zoneId, null, null, start, end, bounds.VideoLoop),
+                new(start, end), TimeZoneInfo.Utc);
         }
 
+        if (filter.VideoLoop is not null)
+            throw ApiError.Invalid("videoLoop is only supported for video reports.");
         if (filter.FromSourceTimeMs.HasValue || filter.ToSourceTimeMs.HasValue)
             throw ApiError.Invalid("Live reports use timestamp bounds.");
         var to = filter.To?.UtcDateTime ?? (session is null ? utcNow : session.LastSourceTimestampUtc.AddMilliseconds(1));

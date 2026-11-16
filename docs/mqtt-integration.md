@@ -2,6 +2,10 @@
 
 The external publisher sends JSON schema `2.0` on `cameras/{camera_id}/analytics` with QoS 1. The default filter is `cameras/+/analytics`. A single-camera filter is also supported. Camera ID in the topic must exactly match the payload. Fields and types are shown in [the sample](../samples/camera-analytics-v2.json). Unknown JSON fields are tolerated. A zero-length zone array keeps previous zone readings. Unknown IDs and invalid values lead to durable bounded rejection metadata.
 
+For `video_file`, the optional `video_loop` is a non-negative integer that increases whenever playback restarts. Keep the same `session_id` and continue increasing `sequence` across loops. The source timestamp still has to be non-decreasing. Within a loop, a known `source_time_ms` cannot go backward. The first numbered observation in an unmarked session establishes a loop and can rewind, as can any later observation with a higher loop number. Earlier numbered loops and same-loop rewinds are stored as historical evidence and do not update live state. Duplicate identity remains camera, session and sequence.
+
+When `video_loop` is omitted or null, the message can continue the last known loop (or the unmarked portion of a session) under the usual sequence, timestamp and position checks. A rewind cannot be recognized without a loop number, and an unmarked message from an earlier loop cannot be identified if it passes those other checks. Send the loop on every video message for reliable ordering.
+
 ## Broker
 
 With Mosquitto on a single development computer:

@@ -27,6 +27,7 @@ export class SessionReportPage {
   readonly number = number;
   readonly videoTime = videoTime;
   readonly form = new FormGroup({
+    videoLoop: new FormControl('', { nonNullable: true }),
     start: new FormControl<number | null>(null, { validators: Validators.min(0) }),
     end: new FormControl<number | null>(null, { validators: Validators.min(0) }),
     interval: new FormControl<Interval>('minute', { nonNullable: true }),
@@ -52,14 +53,15 @@ export class SessionReportPage {
 
   apply(): void {
     const video = this.data()?.analytics.period.timeBasis !== 'eventTime';
-    const { start, end, interval } = this.form.getRawValue();
+    const { videoLoop, start, end, interval } = this.form.getRawValue();
     if (this.form.invalid || (start != null && !Number.isSafeInteger(start)) || (end != null && !Number.isSafeInteger(end))
       || (start != null && end != null && start >= end)) {
       this.inputError.set('Use whole millisecond positions and an end position after the start.');
       return;
     }
     this.inputError.set('');
-    this.load(this.id(), { interval, fromSourceTimeMs: video ? start ?? undefined : undefined,
+    this.load(this.id(), { interval, videoLoop: video ? videoLoop || undefined : undefined,
+      fromSourceTimeMs: video ? start ?? undefined : undefined,
       toSourceTimeMs: video ? end ?? undefined : undefined });
   }
 

@@ -9,6 +9,7 @@ public sealed class CameraAnalyticsPayload
     public required string SourceName { get; init; }
     public required string SessionId { get; init; }
     public required long? SourceTimeMs { get; init; }
+    public long? VideoLoop { get; init; }
     public required double ProcessingFps { get; init; }
     public required ZoneAnalyticsPayload[] Zones { get; init; }
     public required int StaffCount { get; init; }

@@ -56,6 +56,39 @@ public sealed class AnalyticsTests
         Assert.False(ObservationRules.IsOrdered(Observation(6), session));
     }
 
+    [Theory]
+    [InlineData(20L, 21L, 6, 1000L, 6, true)]
+    [InlineData(20L, 21L, 5, 1000L, 6, false)]
+    [InlineData(20L, 21L, 6, 1000L, 4, false)]
+    [InlineData(20L, 19L, 6, 6000L, 6, false)]
+    [InlineData(20L, 20L, 6, 1000L, 6, false)]
+    [InlineData(20L, 20L, 6, 5000L, 6, true)]
+    [InlineData(20L, null, 6, 1000L, 6, false)]
+    [InlineData(20L, null, 6, 6000L, 6, true)]
+    [InlineData(null, 0L, 6, 1000L, 6, true)]
+    [InlineData(null, null, 6, 1000L, 6, false)]
+    public void Video_loops_allow_rewinds_without_replacing_sequence_and_timestamp_checks(long? lastLoop,
+        long? loop, int sequence, long position, int timestampSeconds, bool ordered)
+    {
+        var session = new AnalyticsSession
+        {
+            LastSequence = 5, LastVideoLoop = lastLoop, LastSourceTimeMs = 5000, LastSourceTimestampUtc = Origin.AddSeconds(5)
+        };
+        var observation = Observation(sequence) with
+        {
+            VideoLoop = loop, SourceTimeMs = position, SourceTimestampUtc = Origin.AddSeconds(timestampSeconds)
+        };
+        Assert.Equal(ordered, ObservationRules.IsOrdered(observation, session));
+    }
+
+    [Fact]
+    public void A_loop_boundary_has_no_elapsed_video_time_even_if_the_position_increases()
+    {
+        var observation = Observation(6) with { VideoLoop = 21, SourceTimeMs = 7000 };
+        Assert.Equal(double.PositiveInfinity, ObservationRules.Elapsed(observation, Origin, 5000, 20));
+        Assert.Equal(2, ObservationRules.Elapsed(observation, Origin, 5000, 21));
+    }
+
     [Fact]
     public void Observation_weight_peak_and_coverage_follow_half_open_range()
     {

@@ -2,7 +2,7 @@ namespace CameraAnalytics.Application.Abstractions;
 
 public sealed record CameraObservation(string ExternalCameraId, string SourceType, string SourceName,
     string ExternalSessionId, long? SourceTimeMs, double ProcessingFps, int StaffCount, string Status,
-    long Sequence, DateTime SourceTimestampUtc, IReadOnlyList<ZoneObservation> Zones)
+    long Sequence, DateTime SourceTimestampUtc, IReadOnlyList<ZoneObservation> Zones, long? VideoLoop = null)
 {
     public bool IsVideo => SourceType == "video_file";
     public bool IsLive => SourceType == "live";

@@ -15,6 +15,7 @@ public sealed class AnalyticsSession
     public long LastSequence { get; set; }
     public long? FirstSourceTimeMs { get; set; }
     public long? LastSourceTimeMs { get; set; }
+    public long? LastVideoLoop { get; set; }
     public DateTime FirstSourceTimestampUtc { get; set; }
     public DateTime LastSourceTimestampUtc { get; set; }
     public DateTime StartedAtUtc { get; set; }
@@ -55,6 +56,7 @@ public sealed class CameraSnapshot
     public AnalyticsSession Session { get; set; } = null!;
     public long Sequence { get; set; }
     public long? SourceTimeMs { get; set; }
+    public long? VideoLoop { get; set; }
     public DateTime SourceTimestampUtc { get; set; }
     public DateTime ReceivedAtUtc { get; set; }
     public double ProcessingFps { get; set; }
@@ -74,6 +76,7 @@ public sealed class ZoneSnapshot
     public Guid CameraZoneId { get; set; }
     public long Sequence { get; set; }
     public long? SourceTimeMs { get; set; }
+    public long? VideoLoop { get; set; }
     public DateTime SourceTimestampUtc { get; set; }
     public DateTime ReceivedAtUtc { get; set; }
     public int Occupancy { get; set; }
@@ -97,6 +100,7 @@ public sealed class CameraCurrentState
     public Camera Camera { get; set; } = null!;
     public Guid AnalyticsSessionId { get; set; }
     public long LastSequence { get; set; }
+    public long? LastVideoLoop { get; set; }
     public string AnalyticsStatus { get; set; } = "";
     public string SourceType { get; set; } = "";
     public double ProcessingFps { get; set; }
@@ -133,6 +137,7 @@ public sealed class ZoneCounterState
     public Guid CameraZoneId { get; set; }
     public long LastSequence { get; set; }
     public long? LastSourceTimeMs { get; set; }
+    public long? LastVideoLoop { get; set; }
     public DateTime LastSourceTimestampUtc { get; set; }
     public long ZoneArrivals { get; set; }
     public long ZoneDepartures { get; set; }
@@ -150,6 +155,7 @@ public sealed class ZoneCounterDelta
     public Guid CameraZoneId { get; set; }
     public Guid ReceivedMessageId { get; set; }
     public DateTime EventTimeUtc { get; set; }
+    public long? VideoLoop { get; set; }
     public long? FromSourceTimeMs { get; set; }
     public long? ToSourceTimeMs { get; set; }
     public long ZoneArrivalsDelta { get; set; }
@@ -171,6 +177,7 @@ public sealed class TrackedVisit
     public Guid AnalyticsSessionId { get; set; }
     public AnalyticsSession Session { get; set; } = null!;
     public long ExternalTrackId { get; set; }
+    public long? VideoLoop { get; set; }
     public DateTime FirstSeenAtUtc { get; set; }
     public DateTime LastSeenAtUtc { get; set; }
     public long? FirstSourceTimeMs { get; set; }

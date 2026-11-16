@@ -74,6 +74,54 @@ public sealed class RealtimeTests
         await siteClient.InvokeAsync("UnsubscribeFromSite", site.Id);
     }
 
+    [SqlFact]
+    public async Task Video_loop_rewind_refreshes_stale_live_state_and_notifies_only_after_commit()
+    {
+        await using var host = new IntegrationHost();
+        using var client = host.CreateClient();
+        var (_, camera, _) = await host.Register(client);
+        var path = $"api/v1/cameras/{camera.Id}/live";
+        var now = DateTime.UtcNow;
+        Assert.Equal(IngestResult.Accepted, await host.Ingest(host.Payload("replay", 1,
+            timestamp: now.AddSeconds(-10), sourceMs: 8000, videoLoop: 20), receivedAt: now.AddSeconds(-10)));
+        var before = (await client.GetFromJsonAsync<LiveCamera>(path))!;
+        Assert.Equal("NoRecentData", before.DataFreshness);
+
+        await using var subscriber = Connection(host);
+        await subscriber.StartAsync();
+        await subscriber.InvokeAsync("SubscribeToCamera", camera.Id);
+        var snapshot = NewCompletion<(CameraSnapshotUpdated Notice, LiveCamera Committed)>();
+        var metrics = NewCompletion<ZoneMetricsUpdated>();
+        using var c1 = subscriber.On<CameraSnapshotUpdated>("CameraSnapshotUpdated", async notice =>
+        {
+            var committed = (await client.GetFromJsonAsync<LiveCamera>(path))!;
+            snapshot.TrySetResult((notice, committed));
+        });
+        using var c2 = subscriber.On<ZoneMetricsUpdated>("ZoneMetricsUpdated", notice => { metrics.TrySetResult(notice); });
+
+        var rewind = host.Payload("replay", 2, occupancy: 99, timestamp: now, sourceMs: 1000, videoLoop: 21);
+        await host.InScope(db => db.Database.ExecuteSqlRawAsync(
+            "ALTER TABLE [ZoneSnapshots] ADD CONSTRAINT [CK_Test_Occupancy] CHECK ([Occupancy] <> 99);"));
+        await Assert.ThrowsAsync<DbUpdateException>(() => host.Ingest(rewind));
+        Assert.Equal(1, await host.InScope(db => db.CameraCurrentStates.Select(x => x.LastSequence).SingleAsync()));
+        await Assert.ThrowsAsync<TimeoutException>(() => Task.WhenAny(snapshot.Task, metrics.Task)
+            .WaitAsync(TimeSpan.FromMilliseconds(400)));
+        await host.InScope(db => db.Database.ExecuteSqlRawAsync("ALTER TABLE [ZoneSnapshots] DROP CONSTRAINT [CK_Test_Occupancy];"));
+        Assert.Equal(IngestResult.Accepted, await host.Ingest(rewind));
+
+        var (update, live) = await snapshot.Task.WaitAsync(TimeSpan.FromSeconds(8));
+        var zone = await metrics.Task.WaitAsync(TimeSpan.FromSeconds(8));
+        Assert.Equal(before.SessionId, update.SessionId);
+        Assert.Equal(2, update.Sequence);
+        Assert.Equal("Fresh", update.DataFreshness);
+        Assert.Equal("Fresh", live.DataFreshness);
+        Assert.Equal(update.Sequence, live.LastSequence);
+        Assert.Equal(update.StateVersion, live.StateVersion);
+        Assert.Equal(update.StateVersion, zone.StateVersion);
+        Assert.Equal(99, zone.Occupancy);
+        Assert.Equal(zone.Occupancy, Assert.Single(live.Zones).Occupancy);
+    }
+
     [BrokerFact]
     public async Task QoS1_delivery_is_retried_after_Sql_failure_using_the_persistent_id()
     {
@@ -89,7 +137,7 @@ public sealed class RealtimeTests
 
         await host.InScope(db => db.Database.ExecuteSqlRawAsync(
             "ALTER TABLE [ZoneSnapshots] ADD CONSTRAINT [CK_Test_Occupancy] CHECK ([Occupancy] <> 99);"));
-        var bytes = host.Payload("broker", 1, occupancy: 99);
+        var bytes = host.Payload("broker", 1, occupancy: 99, sourceMs: 8000, videoLoop: 20);
         await Publish(bytes);
         await IntegrationHost.Eventually(() => Task.FromResult(!broker.Subscribed));
         Assert.Equal(0, await host.InScope(db => db.ReceivedAnalyticsMessages.CountAsync()));
@@ -104,6 +152,13 @@ public sealed class RealtimeTests
         Assert.Equal(1, await host.InScope(db => db.ZoneSnapshots.CountAsync()));
         var live = await client.GetFromJsonAsync<LiveCamera>($"api/v1/cameras/{camera.Id}/live");
         Assert.Equal(99, live!.Zones.Single().Occupancy);
+        await Publish(host.Payload("broker", 2, occupancy: 6, sourceMs: 1000, videoLoop: 21));
+        await IntegrationHost.Eventually(() => host.InScope(db => db.CameraSnapshots.AnyAsync(x =>
+            x.CameraId == camera.Id && x.Sequence == 2 && x.IsOrdered && x.VideoLoop == 21)));
+        var replay = (await client.GetFromJsonAsync<LiveCamera>($"api/v1/cameras/{camera.Id}/live"))!;
+        Assert.Equal(live.SessionId, replay.SessionId);
+        Assert.Equal(2, replay.LastSequence);
+        Assert.Equal(6, replay.Zones.Single().Occupancy);
 
         Task<MqttClientPublishResult> Publish(byte[] payload) => publisher.PublishAsync(new MqttApplicationMessageBuilder()
             .WithTopic(host.Topic).WithPayload(payload).WithQualityOfServiceLevel(MqttQualityOfServiceLevel.AtLeastOnce).Build());

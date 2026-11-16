@@ -58,10 +58,12 @@ export type Interval = 'minute' | 'hour' | 'day';
 export interface ReportFilter {
   siteId?: string; cameraId?: string; zoneId?: string; sessionId?: string; sourceType?: 'live' | 'video_file';
   from?: string; to?: string; interval?: Interval; fromSourceTimeMs?: number; toSourceTimeMs?: number;
+  videoLoop?: string;
 }
 export interface Period {
   timeBasis: 'eventTime' | 'sourceTime'; sourceType: string; interval: Interval; timeZoneId: string;
   from: string | null; to: string | null; fromSourceTimeMs: number | null; toSourceTimeMs: number | null;
+  videoLoop?: number;
 }
 export interface PeriodPoint {
   startUtc: string | null; endUtc: string | null; localStart: string | null;
@@ -119,4 +121,7 @@ export interface Session {
   firstSequence: number; lastSequence: number; firstSourceTimeMs: number | null; lastSourceTimeMs: number | null;
   startedAtUtc: string; lastReceivedAtUtc: string; endedAtUtc: string | null;
 }
-export interface SessionReport { session: Session; analytics: ZoneReport<ZoneResult>; staff: StaffReport; untimedVideoObservations: number; }
+export interface SessionReport {
+  session: Session; analytics: ZoneReport<ZoneResult>; staff: StaffReport; untimedVideoObservations: number;
+  availableVideoLoops?: (number | null)[];
+}

@@ -88,7 +88,7 @@ public sealed class AnalyticsDb(DbContextOptions<AnalyticsDb> options) : DbConte
             e.HasIndex(x => new { x.CameraId, x.ReceivedAtUtc });
             e.HasIndex(x => new { x.CameraId, x.SourceTimestampUtc });
             e.HasIndex(x => new { x.AnalyticsSessionId, x.Sequence });
-            e.HasIndex(x => new { x.AnalyticsSessionId, x.SourceTimeMs, x.Sequence });
+            e.HasIndex(x => new { x.AnalyticsSessionId, x.VideoLoop, x.SourceTimeMs, x.Sequence });
             e.HasOne(x => x.Session).WithMany().HasForeignKey(x => x.AnalyticsSessionId);
             e.HasOne<Camera>().WithMany().HasForeignKey(x => x.CameraId);
             e.HasOne<ReceivedAnalyticsMessage>().WithMany().HasForeignKey(x => x.ReceivedMessageId);
@@ -98,7 +98,7 @@ public sealed class AnalyticsDb(DbContextOptions<AnalyticsDb> options) : DbConte
             e.HasIndex(x => new { x.ReceivedMessageId, x.CameraZoneId }).IsUnique();
             e.HasIndex(x => new { x.CameraZoneId, x.ReceivedAtUtc });
             e.HasIndex(x => new { x.CameraZoneId, x.SourceTimestampUtc });
-            e.HasIndex(x => new { x.AnalyticsSessionId, x.CameraZoneId, x.SourceTimeMs, x.Sequence });
+            e.HasIndex(x => new { x.AnalyticsSessionId, x.CameraZoneId, x.VideoLoop, x.SourceTimeMs, x.Sequence });
             e.HasOne(x => x.Session).WithMany().HasForeignKey(x => x.AnalyticsSessionId);
             e.HasOne<CameraZone>().WithMany().HasForeignKey(x => x.CameraZoneId);
             e.HasOne<ReceivedAnalyticsMessage>().WithMany().HasForeignKey(x => x.ReceivedMessageId);
@@ -127,7 +127,7 @@ public sealed class AnalyticsDb(DbContextOptions<AnalyticsDb> options) : DbConte
         {
             e.HasIndex(x => new { x.ReceivedMessageId, x.CameraZoneId }).IsUnique();
             e.HasIndex(x => new { x.CameraZoneId, x.EventTimeUtc });
-            e.HasIndex(x => new { x.AnalyticsSessionId, x.ToSourceTimeMs });
+            e.HasIndex(x => new { x.AnalyticsSessionId, x.VideoLoop, x.ToSourceTimeMs });
             e.HasOne(x => x.Session).WithMany().HasForeignKey(x => x.AnalyticsSessionId);
             e.HasOne<CameraZone>().WithMany().HasForeignKey(x => x.CameraZoneId);
             e.HasOne<ReceivedAnalyticsMessage>().WithMany().HasForeignKey(x => x.ReceivedMessageId);
@@ -137,7 +137,7 @@ public sealed class AnalyticsDb(DbContextOptions<AnalyticsDb> options) : DbConte
             e.Property(x => x.CompletionReason).HasMaxLength(64);
             e.HasIndex(x => new { x.AnalyticsSessionId, x.CameraZoneId, x.Status });
             e.HasIndex(x => new { x.CameraZoneId, x.Status, x.ResolvedAtUtc });
-            e.HasIndex(x => new { x.AnalyticsSessionId, x.ResolvedSourceTimeMs });
+            e.HasIndex(x => new { x.AnalyticsSessionId, x.VideoLoop, x.ResolvedSourceTimeMs });
             e.HasOne(x => x.Session).WithMany().HasForeignKey(x => x.AnalyticsSessionId);
             e.HasOne<Camera>().WithMany().HasForeignKey(x => x.CameraId);
             e.HasOne<CameraZone>().WithMany().HasForeignKey(x => x.CameraZoneId);

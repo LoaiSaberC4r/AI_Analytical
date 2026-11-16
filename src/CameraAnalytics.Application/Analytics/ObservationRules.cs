@@ -10,17 +10,29 @@ public static class ObservationRules
     public static bool IsBeforeCurrentSession(CameraObservation data, AnalyticsSession current) =>
         data.SourceTimestampUtc < current.LastSourceTimestampUtc;
 
-    public static bool IsOrdered(CameraObservation data, AnalyticsSession session) =>
-        session.EndedAtUtc is null && data.Sequence > session.LastSequence
-        && data.SourceTimestampUtc >= session.LastSourceTimestampUtc
-        && (!data.IsVideo || data.SourceTimeMs is null || session.LastSourceTimeMs is null
-            || data.SourceTimeMs >= session.LastSourceTimeMs);
+    public static bool IsOrdered(CameraObservation data, AnalyticsSession session)
+    {
+        if (session.EndedAtUtc is not null || data.Sequence <= session.LastSequence
+            || data.SourceTimestampUtc < session.LastSourceTimestampUtc)
+            return false;
+        if (!data.IsVideo)
+            return true;
+        if (data.VideoLoop < session.LastVideoLoop)
+            return false;
+        return StartsVideoLoop(data, session) || data.SourceTimeMs is null || session.LastSourceTimeMs is null
+            || data.SourceTimeMs >= session.LastSourceTimeMs;
+    }
 
-    public static double Elapsed(CameraObservation data, DateTime previousUtc, long? previousSourceMs)
+    public static bool StartsVideoLoop(CameraObservation data, AnalyticsSession session) =>
+        data.IsVideo && data.VideoLoop.HasValue
+        && (session.LastVideoLoop is null || data.VideoLoop > session.LastVideoLoop);
+
+    public static double Elapsed(CameraObservation data, DateTime previousUtc, long? previousSourceMs,
+        long? previousVideoLoop)
     {
         if (!data.IsVideo)
             return (data.SourceTimestampUtc - previousUtc).TotalSeconds;
-        return data.SourceTimeMs.HasValue && previousSourceMs.HasValue
+        return data.VideoLoop == previousVideoLoop && data.SourceTimeMs.HasValue && previousSourceMs.HasValue
             ? (data.SourceTimeMs.Value - previousSourceMs.Value) / 1000d : double.PositiveInfinity;
     }
 

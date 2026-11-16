@@ -19,15 +19,18 @@ internal sealed class ReportData(AnalyticsDb db, int maximumGapSeconds)
         var left = Math.Max(0, range.Start - maximumGapSeconds * 1000L);
         if (timeline.IsVideo)
         {
-            var observations = snapshots.Where(x => x.SourceTimeMs >= left && x.SourceTimeMs < range.End)
+            var loop = timeline.Period.VideoLoop;
+            var observations = snapshots.Where(x => x.VideoLoop == loop && x.SourceTimeMs >= left && x.SourceTimeMs < range.End)
                 .OrderBy(x => x.SourceTimeMs).ThenBy(x => x.Sequence)
                 .Select(x => new { x.SourceTimeMs, x.ObservationEndSourceMs, x.Occupancy, x.ReportedAverageDwellSeconds, x.LongestActiveDwellSeconds });
             await foreach (var x in observations.AsAsyncEnumerable().WithCancellation(ct))
                 bins.Observe(range, new(x.SourceTimeMs!.Value, x.ObservationEndSourceMs, x.Occupancy, x.ReportedAverageDwellSeconds, x.LongestActiveDwellSeconds));
 
-            await foreach (var x in deltas.Where(x => x.ToSourceTimeMs >= range.Start && x.ToSourceTimeMs < range.End).AsAsyncEnumerable().WithCancellation(ct))
+            await foreach (var x in deltas.Where(x => x.VideoLoop == loop && x.ToSourceTimeMs >= range.Start
+                && x.ToSourceTimeMs < range.End).AsAsyncEnumerable().WithCancellation(ct))
                 bins.Traffic(x.ToSourceTimeMs!.Value, x);
-            await foreach (var x in visits.Where(x => x.ResolvedSourceTimeMs >= range.Start && x.ResolvedSourceTimeMs < range.End).AsAsyncEnumerable().WithCancellation(ct))
+            await foreach (var x in visits.Where(x => x.VideoLoop == loop && x.ResolvedSourceTimeMs >= range.Start
+                && x.ResolvedSourceTimeMs < range.End).AsAsyncEnumerable().WithCancellation(ct))
                 bins.Visit(x.ResolvedSourceTimeMs!.Value, x);
         }
         else
@@ -57,7 +60,8 @@ internal sealed class ReportData(AnalyticsDb db, int maximumGapSeconds)
         if (timeline.IsVideo)
         {
             var earliest = Math.Max(0, range.Start - maximumGapSeconds * 1000L);
-            var projected = snapshots.Where(x => x.SourceTimeMs >= earliest && x.SourceTimeMs < range.End)
+            var loop = timeline.Period.VideoLoop;
+            var projected = snapshots.Where(x => x.VideoLoop == loop && x.SourceTimeMs >= earliest && x.SourceTimeMs < range.End)
                 .Select(x => new { x.SourceTimeMs, x.ObservationEndSourceMs, x.StaffCount });
             await foreach (var x in projected.AsAsyncEnumerable().WithCancellation(ct))
                 bins.Observe(range, new(x.SourceTimeMs!.Value, x.ObservationEndSourceMs, x.StaffCount));

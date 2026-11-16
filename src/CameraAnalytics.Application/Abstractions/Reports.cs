@@ -1,13 +1,15 @@
+using System.Text.Json.Serialization;
 using CameraAnalytics.Application.Common;
 
 namespace CameraAnalytics.Application.Abstractions;
 
 public sealed record ReportFilter(Guid? SiteId = null, Guid? CameraId = null, Guid? ZoneId = null,
     DateTimeOffset? From = null, DateTimeOffset? To = null, string? Interval = null, string? SourceType = null,
-    Guid? SessionId = null, long? FromSourceTimeMs = null, long? ToSourceTimeMs = null);
+    Guid? SessionId = null, long? FromSourceTimeMs = null, long? ToSourceTimeMs = null, string? VideoLoop = null);
 
 public sealed record ReportPeriod(string SourceType, string TimeBasis, string Interval, string TimeZoneId,
-    DateTime? From, DateTime? To, long? FromSourceTimeMs, long? ToSourceTimeMs);
+    DateTime? From, DateTime? To, long? FromSourceTimeMs, long? ToSourceTimeMs,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] long? VideoLoop = null);
 public sealed record PeriodPoint(DateTime? StartUtc, DateTime? EndUtc, DateTimeOffset? LocalStart,
     long? StartSourceTimeMs, long? EndSourceTimeMs);
 public sealed record DataQuality(string Kind, int SampleCount, double CoveragePercent, double ObservationDurationSeconds,
@@ -53,8 +55,10 @@ public sealed record StaffReport(ReportPeriod Period, IReadOnlyList<StaffCamera>
 public sealed record SessionData(Guid Id, Guid CameraId, string CameraName, string ExternalSessionId, string SourceType,
     string SourceName, string Status, long FirstSequence, long LastSequence, long? FirstSourceTimeMs, long? LastSourceTimeMs,
     DateTime FirstSourceTimestampUtc, DateTime LastSourceTimestampUtc, DateTime StartedAtUtc, DateTime LastReceivedAtUtc,
-    DateTime? EndedAtUtc, DateTime CreatedAtUtc);
-public sealed record SessionReport(SessionData Session, ReportResult Analytics, StaffReport Staff, int UntimedVideoObservations);
+    DateTime? EndedAtUtc, DateTime CreatedAtUtc,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] long? LastVideoLoop = null);
+public sealed record SessionReport(SessionData Session, ReportResult Analytics, StaffReport Staff, int UntimedVideoObservations,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] IReadOnlyList<long?>? AvailableVideoLoops = null);
 
 public interface IReportQueries
 {

@@ -51,7 +51,7 @@ public static class VisitTracker
             var visit = new TrackedVisit
             {
                 CameraId = cameraId, CameraZoneId = zoneId, AnalyticsSessionId = sessionId,
-                ExternalTrackId = current.TrackId, FirstSeenAtUtc = observation.SourceTimestampUtc,
+                ExternalTrackId = current.TrackId, VideoLoop = observation.VideoLoop, FirstSeenAtUtc = observation.SourceTimestampUtc,
                 FirstSourceTimeMs = observation.SourceTimeMs, CreatedAtUtc = now
             };
             Update(visit, current, observation, now);

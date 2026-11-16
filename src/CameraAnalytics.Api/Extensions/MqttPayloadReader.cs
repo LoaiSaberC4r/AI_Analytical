@@ -40,7 +40,7 @@ public sealed class MqttPayloadReader : IMqttPayloadReader
         if (!Identifiers.IsSegment(data.SessionId) || !Identifiers.IsSegment(data.SourceType)
             || data.SourceType.Length > 32 || string.IsNullOrWhiteSpace(data.SourceName) || data.SourceName.Length > 512
             || data.SourceName.Any(char.IsControl) || data.Sequence < 0 || data.StaffCount < 0 || !Valid(data.ProcessingFps)
-            || data.Status is not ("running" or "ended") || data.SourceTimeMs < 0
+            || data.Status is not ("running" or "ended") || data.SourceTimeMs < 0 || data.VideoLoop < 0
             || data.Timestamp.UtcDateTime.Year is < 1900 or > 9900)
             return new(null, "invalid_camera_values");
 
@@ -66,7 +66,8 @@ public sealed class MqttPayloadReader : IMqttPayloadReader
                 zone.AverageDwellSeconds, visitors));
         }
         return new(new(camera, data.SourceType, data.SourceName, data.SessionId, data.SourceTimeMs,
-            data.ProcessingFps, data.StaffCount, data.Status, data.Sequence, data.Timestamp.UtcDateTime, zones), null);
+            data.ProcessingFps, data.StaffCount, data.Status, data.Sequence, data.Timestamp.UtcDateTime, zones,
+            data.SourceType == "video_file" ? data.VideoLoop : null), null);
     }
 
     private static bool Valid(double value) => double.IsFinite(value) && value >= 0;

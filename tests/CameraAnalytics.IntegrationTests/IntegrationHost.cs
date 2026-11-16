@@ -34,14 +34,16 @@ internal sealed class IntegrationHost : WebApplicationFactory<Program>
     public static string? SqlConnection => Environment.GetEnvironmentVariable("CAMERA_ANALYTICS_TEST_SQL");
     public static string? BrokerHost => Environment.GetEnvironmentVariable("CAMERA_ANALYTICS_TEST_MQTT_HOST");
     public static int BrokerPort => int.TryParse(Environment.GetEnvironmentVariable("CAMERA_ANALYTICS_TEST_MQTT_PORT"), out var port) ? port : 1883;
-    public string TestCamera { get; } = "test-" + Guid.NewGuid().ToString("N");
+    public string TestCamera { get; }
     public string Topic => $"cameras/{TestCamera}/analytics";
     public string ClientId { get; } = "ca-test-" + Guid.NewGuid().ToString("N");
     private readonly Dictionary<string, string?> settings;
     private readonly string connection;
 
-    public IntegrationHost(bool mqtt = false, bool aggregate = false, bool migrate = true, bool signalR = true)
+    public IntegrationHost(bool mqtt = false, bool aggregate = false, bool migrate = true, bool signalR = true,
+        string? cameraExternalId = null)
     {
+        TestCamera = cameraExternalId ?? "test-" + Guid.NewGuid().ToString("N");
         connection = new SqlConnectionStringBuilder(SqlConnection!)
         {
             InitialCatalog = "CameraAnalytics_Test_" + Guid.NewGuid().ToString("N")
@@ -77,11 +79,11 @@ internal sealed class IntegrationHost : WebApplicationFactory<Program>
         return await action(scope.ServiceProvider.GetRequiredService<AnalyticsDb>());
     }
 
-    public async Task<IngestResult> Ingest(byte[] json, string? topic = null)
+    public async Task<IngestResult> Ingest(byte[] json, string? topic = null, DateTime? receivedAt = null)
     {
         await using var scope = Services.CreateAsyncScope();
         return await scope.ServiceProvider.GetRequiredService<IAnalyticsIngestor>()
-            .Process(topic ?? Topic, json, DateTime.UtcNow, default);
+            .Process(topic ?? Topic, json, receivedAt ?? DateTime.UtcNow, default);
     }
 
     public async Task<(SiteData Site, CameraData Camera, ZoneData Zone)> Register(HttpClient client)
@@ -101,7 +103,7 @@ internal sealed class IntegrationHost : WebApplicationFactory<Program>
 
     public byte[] Payload(string session, long seq, int occupancy = 2, long count = 1,
         DateTime? timestamp = null, string source = "video_file", string status = "running", string? zoneId = "zone_01",
-        bool track = false, long? sourceMs = null, bool noPosition = false)
+        bool track = false, long? sourceMs = null, bool noPosition = false, long? videoLoop = null)
     {
         var zone = new
         {
@@ -114,6 +116,7 @@ internal sealed class IntegrationHost : WebApplicationFactory<Program>
             schema_version = "2.0", camera_id = TestCamera, source_type = source,
             source_name = source == "live" ? "entrance" : "1.mp4", session_id = session,
             source_time_ms = source == "video_file" && !noPosition ? sourceMs ?? seq * 1000 : (long?)null,
+            video_loop = videoLoop,
             processing_fps = 8, zones = zoneId is null ? [] : new[] { zone }, staff_count = occupancy / 2,
             status, sequence = seq, timestamp = timestamp ?? DateTime.UtcNow
         });

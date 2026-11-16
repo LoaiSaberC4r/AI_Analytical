@@ -86,6 +86,23 @@ public sealed class ContractTests
         var read = reader.Read(Topic, Encoding.UTF8.GetBytes(json.ToJsonString()));
         Assert.NotNull(read.Observation);
         Assert.Null(read.Observation.SourceTimeMs);
+        Assert.Null(read.Observation.VideoLoop);
+    }
+
+    [Theory]
+    [InlineData("null", null, null)]
+    [InlineData("0", 0L, null)]
+    [InlineData("21", 21L, null)]
+    [InlineData("-1", null, "invalid_camera_values")]
+    [InlineData("\"21\"", null, "invalid_json_contract")]
+    [InlineData("1.5", null, "invalid_json_contract")]
+    public void Reads_optional_video_loop_as_a_nonnegative_integer(string field, long? loop, string? error)
+    {
+        var json = Parse();
+        json["video_loop"] = JsonNode.Parse(field);
+        var result = reader.Read(Topic, Encoding.UTF8.GetBytes(json.ToJsonString()));
+        Assert.Equal(error, result.Rejection);
+        Assert.Equal(loop, result.Observation?.VideoLoop);
     }
 
     [Fact]

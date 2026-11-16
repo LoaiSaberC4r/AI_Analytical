@@ -64,6 +64,9 @@ namespace CameraAnalytics.Infrastructure.Persistence.Migrations
                     b.Property<DateTime>("LastSourceTimestampUtc")
                         .HasColumnType("datetime2");
 
+                    b.Property<long?>("LastVideoLoop")
+                        .HasColumnType("bigint");
+
                     b.Property<string>("SourceName")
                         .IsRequired()
                         .HasMaxLength(512)
@@ -167,6 +170,9 @@ namespace CameraAnalytics.Infrastructure.Persistence.Migrations
                     b.Property<DateTime>("LastSourceTimestampUtc")
                         .HasColumnType("datetime2");
 
+                    b.Property<long?>("LastVideoLoop")
+                        .HasColumnType("bigint");
+
                     b.Property<double>("ProcessingFps")
                         .HasColumnType("float");
 
@@ -235,6 +241,9 @@ namespace CameraAnalytics.Infrastructure.Persistence.Migrations
                     b.Property<int>("StaffCount")
                         .HasColumnType("int");
 
+                    b.Property<long?>("VideoLoop")
+                        .HasColumnType("bigint");
+
                     b.HasKey("Id");
 
                     b.HasIndex("ReceivedMessageId")
@@ -246,7 +255,7 @@ namespace CameraAnalytics.Infrastructure.Persistence.Migrations
 
                     b.HasIndex("CameraId", "SourceTimestampUtc");
 
-                    b.HasIndex("AnalyticsSessionId", "SourceTimeMs", "Sequence");
+                    b.HasIndex("AnalyticsSessionId", "VideoLoop", "SourceTimeMs", "Sequence");
 
                     b.ToTable("CameraSnapshots");
                 });
@@ -529,13 +538,16 @@ namespace CameraAnalytics.Infrastructure.Persistence.Migrations
                     b.Property<DateTime>("UpdatedAtUtc")
                         .HasColumnType("datetime2");
 
+                    b.Property<long?>("VideoLoop")
+                        .HasColumnType("bigint");
+
                     b.HasKey("Id");
 
                     b.HasIndex("CameraId");
 
-                    b.HasIndex("AnalyticsSessionId", "ResolvedSourceTimeMs");
-
                     b.HasIndex("AnalyticsSessionId", "CameraZoneId", "Status");
+
+                    b.HasIndex("AnalyticsSessionId", "VideoLoop", "ResolvedSourceTimeMs");
 
                     b.HasIndex("CameraZoneId", "Status", "ResolvedAtUtc");
 
@@ -581,6 +593,9 @@ namespace CameraAnalytics.Infrastructure.Persistence.Migrations
                     b.Property<long?>("ToSourceTimeMs")
                         .HasColumnType("bigint");
 
+                    b.Property<long?>("VideoLoop")
+                        .HasColumnType("bigint");
+
                     b.Property<long>("WrongWayInDelta")
                         .HasColumnType("bigint");
 
@@ -595,12 +610,12 @@ namespace CameraAnalytics.Infrastructure.Persistence.Migrations
 
                     b.HasKey("Id");
 
-                    b.HasIndex("AnalyticsSessionId", "ToSourceTimeMs");
-
                     b.HasIndex("CameraZoneId", "EventTimeUtc");
 
                     b.HasIndex("ReceivedMessageId", "CameraZoneId")
                         .IsUnique();
+
+                    b.HasIndex("AnalyticsSessionId", "VideoLoop", "ToSourceTimeMs");
 
                     b.ToTable("ZoneCounterDeltas");
                 });
@@ -630,6 +645,9 @@ namespace CameraAnalytics.Infrastructure.Persistence.Migrations
 
                     b.Property<DateTime>("LastSourceTimestampUtc")
                         .HasColumnType("datetime2");
+
+                    b.Property<long?>("LastVideoLoop")
+                        .HasColumnType("bigint");
 
                     b.Property<long>("WrongWayIn")
                         .HasColumnType("bigint");
@@ -862,6 +880,9 @@ namespace CameraAnalytics.Infrastructure.Persistence.Migrations
                     b.Property<DateTime>("SourceTimestampUtc")
                         .HasColumnType("datetime2");
 
+                    b.Property<long?>("VideoLoop")
+                        .HasColumnType("bigint");
+
                     b.Property<long>("WrongWayIn")
                         .HasColumnType("bigint");
 
@@ -883,7 +904,7 @@ namespace CameraAnalytics.Infrastructure.Persistence.Migrations
                     b.HasIndex("ReceivedMessageId", "CameraZoneId")
                         .IsUnique();
 
-                    b.HasIndex("AnalyticsSessionId", "CameraZoneId", "SourceTimeMs", "Sequence");
+                    b.HasIndex("AnalyticsSessionId", "CameraZoneId", "VideoLoop", "SourceTimeMs", "Sequence");
 
                     b.ToTable("ZoneSnapshots");
                 });

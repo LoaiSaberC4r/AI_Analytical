@@ -8,6 +8,16 @@
   <form [formGroup]="form" (ngSubmit)="apply()">
     <div class="fields">
       @if (data()?.analytics?.period?.timeBasis !== 'eventTime') {
+        @if (data()?.availableVideoLoops; as loops) {
+          @if (loops.length > 1 || (loops.length === 1 && loops[0] !== null)) {
+            <label>Playback loop<select formControlName="videoLoop">
+              <option value="">Latest</option>
+              @for (loop of loops; track loop) {
+                <option [value]="loop ?? 'unmarked'">{{ loop === null ? 'Unmarked' : 'Loop ' + loop }}</option>
+              }
+            </select></label>
+          }
+        }
         <label>Start video position (ms)<input type="number" min="0" formControlName="start" placeholder="First observed"></label>
         <label>End video position (ms)<input type="number" min="0" formControlName="end" placeholder="Last observed"></label>
       }
@@ -30,8 +40,11 @@
     <dl class="camera-meta">
       <div><dt>Session ID</dt><dd><code>{{ report.session.externalSessionId }}</code></dd></div>
       @if (report.analytics.period.timeBasis === 'sourceTime') {
-        <div><dt>First video position</dt><dd>{{ videoTime(report.session.firstSourceTimeMs,true) }}</dd></div>
-        <div><dt>Last video position</dt><dd>{{ videoTime(report.session.lastSourceTimeMs,true) }}</dd></div>
+        @if (report.analytics.period.videoLoop !== undefined) {
+          <div><dt>Playback loop</dt><dd>{{ report.analytics.period.videoLoop }}</dd></div>
+        }
+        <div><dt>Report start position</dt><dd>{{ videoTime(report.analytics.period.fromSourceTimeMs,true) }}</dd></div>
+        <div><dt>Report end (exclusive)</dt><dd>{{ videoTime(report.analytics.period.toSourceTimeMs,true) }}</dd></div>
       }
       <div><dt>First message received</dt><dd>{{ report.session.startedAtUtc | date:'medium' }}</dd></div>
       <div><dt>Last message received</dt><dd>{{ report.session.lastReceivedAtUtc | date:'medium' }}</dd></div>

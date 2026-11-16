@@ -24,7 +24,8 @@ POST returns 201 with the new record and Location. PUT returns the updated recor
 
 - Filter by `siteId`, `cameraId` and `zoneId`. Supply `from` and `to` as UTC or offset timestamps for `sourceType=live`. Dates use half-open ranges. Site-scoped buckets use the site's time zone. The default for an unscoped report is UTC.
 - Set `interval` to `minute`, `hour` or `day`. The default range limit is seven days for minute buckets and 90 days for hour and day buckets. Both limits are configurable.
-- For `video_file` reports use `sessionId` (or the session report path) and optional `fromSourceTimeMs` / `toSourceTimeMs`. Filters and response times are source-relative. Peak-hours always uses hour buckets.
+- For `video_file` reports use `sessionId` (or the session report path) and optional `fromSourceTimeMs` / `toSourceTimeMs`. A report covers one playback loop and defaults to the latest accepted loop. Set `videoLoop=21` to select a numbered loop or `videoLoop=unmarked` to select history before loop numbering was known. A numbered loop with no accepted observations returns 404. Source positions and default bounds are relative to the selected loop; the upper bound is exclusive. Peak-hours always uses hour buckets.
+- A numbered video report includes `period.videoLoop`. Session metadata includes `lastVideoLoop` once known, and video session reports list `availableVideoLoops` (a null entry denotes unmarked history). The untimed observation count covers the selected loop. The session's `firstSourceTimeMs` still refers to the session's first known position, and `lastSourceTimeMs` refers to the last known position in its latest loop.
 - Ranking metrics are `arrivals`, `entries`, `departures`, `exits`, `averageOccupancy`, `peakOccupancy`, `utilization`, `reportedAverageDwell`, `estimatedAverageDwell`, `longestActiveDwell`, and `wrongWayEvents`. The dwell ranking accepts the three dwell metrics.
 
 ## SignalR

@@ -1,3 +1,4 @@
+using System.Globalization;
 using CameraAnalytics.Application.Abstractions;
 using CameraAnalytics.Application.Analytics;
 using CameraAnalytics.Application.Common;
@@ -14,7 +15,13 @@ public sealed class ReportQueries(AnalyticsDb db, IOptions<AnalyticsOptions> set
 
     public async Task<ReportResult> Zones(ReportFilter filter, bool series, CancellationToken ct)
     {
-        var (effective, timeline) = await Resolve(filter, ct);
+        var scope = await Resolve(filter, ct);
+        return await Zones(scope, series, ct);
+    }
+
+    private async Task<ReportResult> Zones(ReportScope scope, bool series, CancellationToken ct)
+    {
+        var (effective, timeline, _, _) = scope;
         var cameras = Cameras(effective);
         var zones = await db.CameraZones.AsNoTracking().Where(z => cameras.Any(c => c.Id == z.CameraId)
             && (!effective.ZoneId.HasValue || z.Id == effective.ZoneId))
@@ -74,7 +81,13 @@ public sealed class ReportQueries(AnalyticsDb db, IOptions<AnalyticsOptions> set
 
     public async Task<StaffReport> Staff(ReportFilter filter, CancellationToken ct)
     {
-        var (effective, timeline) = await Resolve(filter, ct);
+        var scope = await Resolve(filter, ct);
+        return await Staff(scope, ct);
+    }
+
+    private async Task<StaffReport> Staff(ReportScope scope, CancellationToken ct)
+    {
+        var (effective, timeline, _, _) = scope;
         var cameras = await Cameras(effective).OrderBy(x => x.Name).ThenBy(x => x.Id)
             .Select(x => new { x.Id, x.Name }).ToListAsync(ct);
         var periods = timeline.Buckets().ToArray();
@@ -86,6 +99,7 @@ public sealed class ReportQueries(AnalyticsDb db, IOptions<AnalyticsOptions> set
                 await Data.Staff(timeline, camera.Id, effective.SessionId, bins, ct);
             var current = await db.CameraCurrentStates.AsNoTracking().Where(x => x.CameraId == camera.Id
                 && (!effective.SessionId.HasValue || x.AnalyticsSessionId == effective.SessionId) && x.SourceType == timeline.Period.SourceType)
+                .Where(x => !timeline.IsVideo || x.LastVideoLoop == timeline.Period.VideoLoop)
                 .Select(x => new { x.StaffCount, x.LastReceivedAtUtc }).SingleOrDefaultAsync(ct);
             results.Add(new(camera.Id, camera.Name, current?.StaffCount, current?.LastReceivedAtUtc, bins.Total.Average,
                 bins.Total.Peak, bins.Total.Quality(timeline.Window.Seconds), bins.Series.Select(x =>
@@ -113,23 +127,27 @@ public sealed class ReportQueries(AnalyticsDb db, IOptions<AnalyticsOptions> set
 
     public async Task<SessionReport> SessionReport(Guid id, ReportFilter filter, CancellationToken ct)
     {
-        var session = await Session(id, ct);
-        filter = filter with { SessionId = id };
-        var untimed = session.SourceType == "video_file"
-            ? await db.CameraSnapshots.CountAsync(x => x.AnalyticsSessionId == id && x.IsOrdered && x.SourceTimeMs == null, ct)
-            : 0;
-        return new(session, await Zones(filter, true, ct), await Staff(filter, ct), untimed);
+        var scope = await Resolve(filter with { SessionId = id }, ct);
+        var loops = scope.Timeline.IsVideo
+            ? await OrderedSnapshots(id).Select(x => x.VideoLoop).Distinct().OrderBy(x => x).ToListAsync(ct)
+            : null;
+        return new(scope.Session!, await Zones(scope, true, ct), await Staff(scope, ct), scope.Untimed, loops);
     }
 
     private static IQueryable<SessionData> SessionRows(IQueryable<AnalyticsSession> sessions) => sessions.Select(x =>
         new SessionData(x.Id, x.CameraId, x.Camera.Name, x.ExternalSessionId, x.SourceType, x.SourceName, x.Status, x.FirstSequence,
             x.LastSequence, x.FirstSourceTimeMs, x.LastSourceTimeMs, x.FirstSourceTimestampUtc, x.LastSourceTimestampUtc,
-            x.StartedAtUtc, x.LastReceivedAtUtc, x.EndedAtUtc, x.CreatedAtUtc));
+            x.StartedAtUtc, x.LastReceivedAtUtc, x.EndedAtUtc, x.CreatedAtUtc, x.LastVideoLoop));
 
     private IQueryable<Camera> Cameras(ReportFilter filter) => db.Cameras.AsNoTracking()
         .Where(x => (!filter.SiteId.HasValue || x.SiteId == filter.SiteId) && (!filter.CameraId.HasValue || x.Id == filter.CameraId));
 
-    private async Task<(ReportFilter Filter, ReportTimeline Timeline)> Resolve(ReportFilter filter, CancellationToken ct)
+    private sealed record ReportScope(ReportFilter Filter, ReportTimeline Timeline, SessionData? Session, int Untimed);
+
+    private IQueryable<CameraSnapshot> OrderedSnapshots(Guid sessionId) =>
+        db.CameraSnapshots.AsNoTracking().Where(x => x.AnalyticsSessionId == sessionId && x.IsOrdered);
+
+    private async Task<ReportScope> Resolve(ReportFilter filter, CancellationToken ct)
     {
         var session = filter.SessionId.HasValue ? await Session(filter.SessionId.Value, ct) : null;
         if (session is not null)
@@ -154,8 +172,35 @@ public sealed class ReportQueries(AnalyticsDb db, IOptions<AnalyticsOptions> set
             ? await db.Sites.AsNoTracking().Where(x => x.Id == filter.SiteId).Select(x => x.TimeZoneId).SingleOrDefaultAsync(ct)
                 ?? throw ApiError.NotFound("Site")
             : "UTC";
-        return (filter, ReportTimeline.Create(filter, settings.Value, clock.GetUtcNow().UtcDateTime, zoneId, session));
+        VideoReportBounds? bounds = null;
+        var untimed = 0;
+        if (session?.SourceType == "video_file")
+        {
+            var loop = ResolveVideoLoop(filter.VideoLoop, session.LastVideoLoop);
+            var positions = await OrderedSnapshots(session.Id).Where(x => x.VideoLoop == loop)
+                .GroupBy(x => x.AnalyticsSessionId)
+                .Select(g => new
+                {
+                    First = g.Min(x => x.SourceTimeMs),
+                    Last = g.Max(x => x.SourceTimeMs),
+                    Untimed = g.Count(x => x.SourceTimeMs == null)
+                }).SingleOrDefaultAsync(ct);
+            if (positions is null && filter.VideoLoop is not null && loop.HasValue)
+                throw ApiError.NotFound("Video loop");
+            bounds = new(loop, positions?.First, positions?.Last);
+            untimed = positions?.Untimed ?? 0;
+        }
+        var timeline = ReportTimeline.Create(filter, settings.Value, clock.GetUtcNow().UtcDateTime, zoneId, session, bounds);
+        return new(filter, timeline, session, untimed);
     }
+
+    private static long? ResolveVideoLoop(string? selected, long? latest) => selected switch
+    {
+        null => latest,
+        "unmarked" => null,
+        _ when long.TryParse(selected, NumberStyles.None, CultureInfo.InvariantCulture, out var loop) => loop,
+        _ => throw ApiError.Invalid("videoLoop must be a non-negative integer or unmarked.")
+    };
 
     private static ReportFilter WithCamera(ReportFilter filter, Guid cameraId)
     {

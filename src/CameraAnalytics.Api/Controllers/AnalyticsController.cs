@@ -1,3 +1,4 @@
+using System.Globalization;
 using CameraAnalytics.Application.Abstractions;
 using CameraAnalytics.Application.Analytics;
 using CameraAnalytics.Application.Common;
@@ -34,6 +35,8 @@ public sealed class AnalyticsController(IReportQueries reports, IOptions<Analyti
     public async Task<OccupancyReport> Occupancy([FromQuery] ReportFilter filter, CancellationToken ct)
     {
         var report = await reports.Zones(filter, true, ct);
+        if (report.Period.TimeBasis == "sourceTime")
+            filter = filter with { VideoLoop = report.Period.VideoLoop?.ToString(CultureInfo.InvariantCulture) ?? "unmarked" };
         var hourly = report.Period.Interval == "hour" ? report : await reports.Zones(filter with { Interval = "hour" }, true, ct);
         var peaks = ReportRanking.PeakHours(hourly, MinimumCoverage).Zones.ToDictionary(x => x.ZoneId, x => x.Occupancy);
         return new(report.Period, report.Zones.Select(x => new OccupancyZone(x.ZoneId, x.ZoneName, x.AverageOccupancy,
