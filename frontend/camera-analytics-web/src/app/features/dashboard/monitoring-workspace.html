@@ -1,0 +1,114 @@
+<header class="page-heading">
+  <div>
+    <h1>{{ mode() === 'overview' ? 'Operations overview' : 'Live monitoring' }}</h1>
+    <p>{{ mode() === 'overview' ? 'Camera health, current zone activity and recent live-source trends.' :
+      'Latest accepted readings for registered cameras and zones.' }}</p>
+  </div>
+  <div class="heading-actions">
+    @if (siteId() || cameraId()) { <span class="pill" [class.good]="live.state() === 'Connected'"><i></i>
+      {{ live.state() === 'Disabled' ? 'REST refresh' : live.state() === 'Connected' ? 'Live updates' : live.state() }}</span> }
+    @if (!cameraId() && sites().length) {
+      <label class="sr-only" for="monitor-site">Site</label>
+      <select id="monitor-site" [value]="siteId()" (change)="selectSite($any($event.target).value)">
+        @for (site of sites(); track site.id) { <option [value]="site.id">{{ site.name }}</option> }
+      </select>
+    }
+    @if (cameraId()) { <a class="secondary" routerLink="/live">All cameras</a> }
+  </div>
+</header>
+
+@if (error()) { <p class="notice error" role="alert">{{ error() }}</p> }
+@if (initial() || busy()) { <p class="notice" role="status">Loading monitoring data…</p> }
+@else if (!sites().length && !cameraId() && !error()) {
+  <section class="panel empty intro">
+    <h2>Register your first site</h2>
+    <p>Add a site, then register your cameras and zone IDs to start receiving analytics.</p>
+    <a class="primary" routerLink="/sites">Manage sites</a>
+  </section>
+} @else if (siteId() || cameraId()) {
+  @if (mode() === 'overview') {
+    <div class="metrics">
+      <article class="metric"><span>Fresh cameras</span><strong>{{ freshCameras().length }}<small> / {{ cameras().length }}</small></strong><span>Registered at this site</span></article>
+      <article class="metric"><span>Observed zone occupancy</span><strong>{{ number(currentOccupancy()) }}</strong><span>{{ currentZones().length }} fresh zone readings</span></article>
+      <article class="metric"><span>MQTT subscriber</span><strong class="metric-text">{{ !status() ? '—' : !status()?.mqttEnabled ? 'Disabled' : status()?.mqttSubscribed ? 'Subscribed' : 'Disconnected' }}</strong><span>Ingestion service</span></article>
+      <article class="metric"><span>Arrivals in the last 12 hours</span><strong>{{ history()?.dataQuality.kind === 'Derived' ? number(history()?.traffic?.arrivals) : '—' }}</strong><span>Live-source counter increments</span></article>
+    </div>
+    <div class="dashboard-grid">
+      <section class="panel">
+        <div class="panel-title"><div><h2>Occupancy trend</h2><p>Time-weighted averages across the last 12 hours</p></div><a routerLink="/analytics">Reports →</a></div>
+        @if (chartLines().length) { <ca-chart label="Average occupancy by zone over time" [lines]="chartLines()" [labels]="chartLabels()" /> }
+        @else { <p class="notice">{{ historyError() || 'No live-source occupancy observations for this period.' }}</p> }
+      </section>
+      <section class="panel insights">
+        <div class="panel-title"><div><h2>Zone highlights</h2><p>Live sources · Last 12 hours</p></div></div>
+        <dl>
+          <div><dt>Most visited</dt><dd>{{ history()?.mostVisitedZone?.zoneName ?? '—' }}<small>{{ number(history()?.mostVisitedZone?.value) }} arrivals</small></dd></div>
+          <div><dt>Top entry zone</dt><dd>{{ history()?.topEntryZone?.zoneName ?? '—' }}<small>{{ number(history()?.topEntryZone?.value) }} entries</small></dd></div>
+          <div><dt>Most crowded</dt><dd>{{ history()?.mostCrowdedZone?.zoneName ?? '—' }}<small>{{ number(history()?.mostCrowdedZone?.value) }} average occupancy</small></dd></div>
+        </dl>
+      </section>
+    </div>
+  }
+  <section class="panel">
+    <div class="panel-title">
+      <div><h2>{{ mode() === 'overview' ? 'Camera status' : cameraId() ? 'Camera readings' : siteName() || 'Cameras' }}</h2><p>Freshness reflects the time since the last accepted message.</p></div>
+      @if (mode() === 'live' && !cameraId() && cameras().length > 1) {
+        <select aria-label="Filter cameras" [value]="selectedCamera()" (change)="selectedCamera.set($any($event.target).value)">
+          <option value="">All cameras</option>
+          @for (camera of cameras(); track camera.cameraId) { <option [value]="camera.cameraId">{{ camera.cameraName }}</option> }
+        </select>
+      }
+    </div>
+    @if (!cameras().length && !error()) {
+      <div class="empty"><h3>No registered cameras</h3><a routerLink="/cameras">Manage cameras</a></div>
+    }
+    @if (mode() === 'overview' && cameras().length) {
+      <ca-table [headers]="['Camera','Freshness','Analytics status','FPS','Staff','Last received','']">
+        @for (camera of cameras(); track camera.cameraId) {
+          <tr>
+            <td><strong>{{ camera.cameraName }}</strong><small>{{ camera.externalCameraId }}</small></td>
+            <td><span class="pill" [class.good]="camera.isActive && camera.dataFreshness === 'Fresh'"
+              [class.warn]="camera.isActive && camera.dataFreshness === 'Stale'">{{ camera.isActive ? freshnessLabel(camera.dataFreshness) : 'Disabled' }}</span></td>
+            <td>{{ camera.analyticsStatus ?? '—' }}</td><td>{{ number(camera.processingFps) }}</td><td>{{ number(camera.staffCount) }}</td>
+            <td>{{ camera.lastReceivedAtUtc ? (camera.lastReceivedAtUtc | date:'medium') : '—' }}</td>
+            <td><a [routerLink]="['/live',camera.cameraId]">View live</a></td>
+          </tr>
+        }
+      </ca-table>
+    }
+    @if (mode() === 'live') {
+      @for (camera of visibleCameras(); track camera.cameraId) {
+        <article class="camera-block">
+          <div class="panel-title">
+            <div><h3>{{ camera.cameraName }}</h3>
+              <p>{{ camera.externalCameraId }} · {{ camera.sourceType === 'video_file' ? 'Video processing' : camera.sourceType === 'live' ? 'Live source' : camera.sourceType ?? 'No source yet' }}</p>
+            </div>
+            <span class="pill" [class.good]="camera.isActive && camera.dataFreshness === 'Fresh'"
+              [class.warn]="camera.isActive && camera.dataFreshness === 'Stale'">{{ camera.isActive ? freshnessLabel(camera.dataFreshness) : 'Disabled' }}</span>
+          </div>
+          <dl class="camera-meta">
+            <div><dt>Analytics status</dt><dd>{{ camera.analyticsStatus ?? '—' }}</dd></div>
+            <div><dt>Processing FPS</dt><dd>{{ number(camera.processingFps) }}</dd></div>
+            <div><dt>Staff count</dt><dd>{{ number(camera.staffCount) }}</dd></div>
+            <div><dt>Last sequence</dt><dd>{{ number(camera.lastSequence) }}</dd></div>
+            <div><dt>Last received</dt><dd>{{ camera.lastReceivedAtUtc ? (camera.lastReceivedAtUtc | date:'medium') : '—' }}</dd></div>
+          </dl>
+          @if (camera.zones.length) {
+            <ca-table [headers]="['Zone','Occupancy','Utilization','Arrivals / departures','Entry / exit','Wrong way in / out','Reported dwell','Active tracks','Longest active']">
+              @for (zone of camera.zones; track zone.zoneId) {
+                <tr>
+                  <td><strong>{{ zone.zoneName }}</strong><small>{{ zone.externalZoneId }} · {{ !zone.isActive ? 'Disabled' : zone.previousSession ? 'Previous session' : freshnessLabel(zone.dataFreshness) }}</small></td>
+                  <td>{{ number(zone.occupancy) }} / {{ number(zone.capacity) }}</td>
+                  <td><span [class.hot]="zone.capacityStatus === 'Critical'" [class.amber]="zone.capacityStatus === 'Warning'">{{ number(zone.utilizationPercent, '%') }}</span></td>
+                  <td>{{ number(zone.zoneArrivals) }} / {{ number(zone.zoneDepartures) }}</td><td>{{ number(zone.entry) }} / {{ number(zone.exit) }}</td>
+                  <td>{{ number(zone.wrongWayIn) }} / {{ number(zone.wrongWayOut) }}</td><td>{{ number(zone.reportedAverageDwellSeconds,' s') }}</td>
+                  <td>{{ number(zone.activeVisitorsCount) }}</td><td>{{ number(zone.longestActiveDwellSeconds,' s') }}</td>
+                </tr>
+              }
+            </ca-table>
+          } @else { <p class="notice">No zones registered. <a [routerLink]="['/cameras',camera.cameraId,'zones']">Manage zones</a></p> }
+        </article>
+      }
+    }
+  </section>
+}

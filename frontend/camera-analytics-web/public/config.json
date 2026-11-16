@@ -1,0 +1,6 @@
+{
+  "apiBaseUrl": "http://localhost:5080",
+  "signalREnabled": true,
+  "hubPath": "/hubs/analytics",
+  "refreshIntervalSeconds": 10
+}

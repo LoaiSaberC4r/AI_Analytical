@@ -1,0 +1,10 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <ItemGroup>
+    <ProjectReference Include="../../src/CameraAnalytics.Api/CameraAnalytics.Api.csproj" />
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="18.0.1" />
+    <PackageReference Include="xunit" Version="2.9.3" />
+    <PackageReference Include="xunit.runner.visualstudio" Version="3.1.5" PrivateAssets="all" />
+    <Using Include="Xunit" />
+    <None Include="../../samples/camera-analytics-v2.json" Link="camera-analytics-v2.json" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+</Project>

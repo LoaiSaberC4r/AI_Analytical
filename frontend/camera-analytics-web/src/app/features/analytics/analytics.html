@@ -1,0 +1,130 @@
+<header class="page-heading"><div><h1>Analytics</h1><p>Explore event-time reports for live camera sources.</p></div><a class="secondary" routerLink="/sessions">Video sessions</a></header>
+
+<section class="panel filter-panel">
+  <form [formGroup]="form" (ngSubmit)="run()">
+    <div class="fields report-fields">
+      <label>Site<select formControlName="siteId"><option value="">All sites</option>
+        @for (site of sites(); track site.id) { <option [value]="site.id">{{ site.name }}</option> }</select></label>
+      <label>Camera<select formControlName="cameraId"><option value="">All cameras</option>
+        @for (camera of cameras(); track camera.id) { <option [value]="camera.id">{{ camera.name }}</option> }</select></label>
+      <label>Zone<select formControlName="zoneId"><option value="">All zones</option>
+        @for (zone of zones(); track zone.id) { <option [value]="zone.id">{{ zone.name }}</option> }</select></label>
+      <label>From · Browser time<input type="datetime-local" formControlName="from"></label>
+      <label>To · Browser time<input type="datetime-local" formControlName="to"></label>
+      <label>Interval<select formControlName="interval"><option value="minute">Minute</option><option value="hour">Hour</option><option value="day">Day</option></select></label>
+    </div>
+    @if (catalogError()) { <p class="form-error" role="alert">{{ catalogError() }}</p> }
+    <div class="actions"><button class="primary" type="submit">Run report</button></div>
+  </form>
+</section>
+
+<nav class="tabs" aria-label="Analytics reports">
+  @for (panel of panels; track panel.key) {
+    <button type="button" [class.active]="tab() === panel.key" [attr.aria-pressed]="tab() === panel.key" (click)="select(panel.key)">{{ panel.label }}</button>
+  }
+</nav>
+
+<section class="panel report">
+  @if (tab() === 'rankings') {
+    <div class="panel-title"><div><h2>Zone comparison</h2><p>Order zones by a single metric for the selected period.</p></div>
+      <select aria-label="Ranking metric" [formControl]="form.controls.metric" (change)="run()">
+        @for (metric of metrics; track metric[0]) { <option [value]="metric[0]">{{ metric[1] }}</option> }
+      </select>
+    </div>
+  }
+  @if (error()) { <p class="notice error" role="alert">{{ error() }}</p> }
+  @else if (loading()) { <p class="notice" role="status">Loading report…</p> }
+  @else if (result(); as report) {
+    @if (report.kind !== 'rankings') {
+      <div class="panel-title"><div><h2>{{ report.kind === 'occupancy' ? 'Occupancy trends' : report.kind === 'traffic' ? 'Traffic trends' :
+        report.kind === 'wrongWay' ? 'Wrong-way events' : report.kind === 'staff' ? 'Staff presence by camera' : 'Dwell by zone' }}</h2>
+        <p>Event time · {{ report.data.period.timeZoneId }}</p></div>
+        @if (report.kind === 'traffic') {
+          <select aria-label="Traffic chart metric" [value]="trafficMetric()" (change)="trafficMetric.set($any($event.target).value)">
+            @for (metric of trafficMetrics; track metric[0]) { <option [value]="metric[0]">{{ metric[1] }}</option> }
+          </select>
+        }
+      </div>
+    }
+    @if (plot().lines.length) {
+      <ca-chart label="Selected analytics trend" [labels]="plot().labels" [lines]="plot().lines" />
+    }
+    @switch (report.kind) {
+      @case ('rankings') {
+        @if (!report.data.items.length) { <p class="notice">No observations support this ranking for the selected period.</p> }
+        @else {
+          <ca-table [headers]="['Rank','Zone','Value (' + report.data.unit + ')','Quality','Coverage','Samples']">
+            @for (row of report.data.items; track row.zoneId) {
+              <tr><td>{{ row.rank }}</td><td><strong>{{ row.zoneName }}</strong></td><td>{{ number(row.value) }}</td>
+                <td>{{ row.dataQuality.kind }}</td><td>{{ number(row.dataQuality.coveragePercent,'%') }}</td><td>{{ row.dataQuality.sampleCount }}</td></tr>
+            }
+          </ca-table>
+        }
+      }
+      @case ('occupancy') {
+        @if (!report.data.zones.length) { <p class="notice">No zones match the selected filters.</p> }
+        @else {
+          <ca-table [headers]="['Zone','Weighted average','Observed peak','Peak utilization','Coverage','Samples']">
+            @for (row of report.data.zones; track row.zoneId) {
+              <tr><td><strong>{{ row.zoneName }}</strong></td><td>{{ number(row.averageOccupancy) }}</td><td>{{ number(row.peakOccupancy) }}</td>
+                <td>{{ number(row.peakUtilizationPercent,'%') }}</td><td>{{ number(row.dataQuality.coveragePercent,'%') }}</td><td>{{ row.dataQuality.sampleCount }}</td></tr>
+            }
+          </ca-table>
+          <div class="panel-title stacked"><div><h2>Peak hours by metric</h2><p>Hours appear when they meet the configured coverage threshold.</p></div></div>
+          <ca-table [headers]="['Zone','Occupancy','Arrivals','Entries','Departures','Wrong-way']">
+            @for (row of report.peaks.zones; track row.zoneId) {
+              <tr><td>{{ row.zoneName }}</td><td>{{ periodLabel(row.occupancy?.period) }}</td><td>{{ periodLabel(row.arrivals?.period) }}</td>
+                <td>{{ periodLabel(row.entries?.period) }}</td><td>{{ periodLabel(row.departures?.period) }}</td><td>{{ periodLabel(row.wrongWayEvents?.period) }}</td></tr>
+            }
+          </ca-table>
+        }
+      }
+      @case ('traffic') {
+        @if (!report.data.zones.length) { <p class="notice">No zones match the selected filters.</p> }
+        @else {
+          <ca-table [headers]="['Zone','Arrivals','Departures','Entries','Exits','Counter resets','Observation gaps','Coverage']">
+            @for (row of report.data.zones; track row.zoneId) {
+              <tr><td><strong>{{ row.zoneName }}</strong></td><td>{{ number(row.traffic.arrivals) }}</td><td>{{ number(row.traffic.departures) }}</td>
+                <td>{{ number(row.traffic.entries) }}</td><td>{{ number(row.traffic.exits) }}</td><td>{{ row.dataQuality.counterResetCount }}</td>
+                <td>{{ row.dataQuality.gapCount }}</td><td>{{ number(row.dataQuality.coveragePercent,'%') }}</td></tr>
+            }
+          </ca-table>
+        }
+      }
+      @case ('wrongWay') {
+        <div class="report-totals"><span>Wrong-way in <strong>{{ number(report.data.wrongWayIn) }}</strong></span>
+          <span>Wrong-way out <strong>{{ number(report.data.wrongWayOut) }}</strong></span><span>Combined <strong>{{ number(report.data.wrongWayEvents) }}</strong></span></div>
+        <ca-table [headers]="['Zone','Wrong-way in','Wrong-way out','Combined','Coverage']">
+          @for (row of report.data.zones; track row.zoneId) {
+            <tr><td><strong>{{ row.zoneName }}</strong></td><td>{{ number(row.traffic.wrongWayIn) }}</td><td>{{ number(row.traffic.wrongWayOut) }}</td>
+              <td>{{ number(row.traffic.wrongWayEvents) }}</td><td>{{ number(row.dataQuality.coveragePercent,'%') }}</td></tr>
+          }
+        </ca-table>
+      }
+      @case ('dwell') {
+        <p class="notice">The reported average comes from the latest observation. Estimated dwell uses completed track observations within the selected period.</p>
+        @if (!report.data.zones.length) { <p class="notice">No zones match the selected filters.</p> }
+        @else {
+          <ca-table [headers]="['Zone','Reported average','Longest observed active','Estimated visits','Estimated total','Estimated average','Uncertain visits']">
+            @for (row of report.data.zones; track row.zoneId) {
+              <tr><td><strong>{{ row.zoneName }}</strong></td><td>{{ number(row.reportedAverageDwellSeconds,' s') }}</td><td>{{ number(row.longestActiveDwellSeconds,' s') }}</td>
+                <td>{{ row.estimatedCompletedVisits }}</td><td>{{ number(row.estimatedTotalDwellSeconds,' s') }}</td>
+                <td>{{ number(row.estimatedHistoricalAverageDwellSeconds,' s') }}</td><td>{{ row.uncertainVisits }}</td></tr>
+            }
+          </ca-table>
+        }
+      }
+      @case ('staff') {
+        @if (!report.data.cameras.length) { <p class="notice">No cameras match the selected filters.</p> }
+        @else {
+          <ca-table [headers]="['Camera','Latest staff count','Weighted average','Observed peak','Coverage']">
+            @for (row of report.data.cameras; track row.cameraId) {
+              <tr><td><strong>{{ row.cameraName }}</strong></td><td>{{ number(row.latestStaffCount) }}</td><td>{{ number(row.averageStaffCount) }}</td>
+                <td>{{ number(row.peakStaffCount) }}</td><td>{{ number(row.dataQuality.coveragePercent,'%') }}</td></tr>
+            }
+          </ca-table>
+        }
+      }
+    }
+  }
+</section>

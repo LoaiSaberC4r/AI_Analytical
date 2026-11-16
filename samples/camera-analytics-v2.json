@@ -1,0 +1,56 @@
+{
+  "schema_version": "2.0",
+  "camera_id": "1",
+  "source_type": "video_file",
+  "source_name": "1.mp4",
+  "session_id": "035d345556884e69bab1eaf165a221a4",
+  "source_time_ms": 25533,
+  "processing_fps": 8,
+  "zones": [
+    {
+      "zone_id": "zone_01",
+      "occupancy": 0,
+      "zone_arrivals": 0,
+      "zone_departures": 0,
+      "entry": 0,
+      "exit": 0,
+      "wrong_way_in": 0,
+      "wrong_way_out": 0,
+      "average_dwell_seconds": 0,
+      "active_visitors": []
+    },
+    {
+      "zone_id": "zone_02",
+      "occupancy": 0,
+      "zone_arrivals": 2,
+      "zone_departures": 1,
+      "entry": 1,
+      "exit": 0,
+      "wrong_way_in": 0,
+      "wrong_way_out": 0,
+      "average_dwell_seconds": 13.3,
+      "active_visitors": []
+    },
+    {
+      "zone_id": "zone_03",
+      "occupancy": 1,
+      "zone_arrivals": 1,
+      "zone_departures": 0,
+      "entry": 0,
+      "exit": 0,
+      "wrong_way_in": 0,
+      "wrong_way_out": 0,
+      "average_dwell_seconds": 0,
+      "active_visitors": [
+        {
+          "track_id": 1,
+          "dwell_seconds": 23.7
+        }
+      ]
+    }
+  ],
+  "staff_count": 2,
+  "status": "running",
+  "sequence": 31,
+  "timestamp": "2026-11-16T15:17:54.687+02:00"
+}

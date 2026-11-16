@@ -1,0 +1,15 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+  <ItemGroup>
+    <ProjectReference Include="../CameraAnalytics.Application/CameraAnalytics.Application.csproj" />
+    <ProjectReference Include="../CameraAnalytics.Infrastructure/CameraAnalytics.Infrastructure.csproj" />
+    <ProjectReference Include="../CameraAnalytics.Contracts/CameraAnalytics.Contracts.csproj" />
+    <PackageReference Include="Swashbuckle.AspNetCore" Version="10.1.7" />
+    <PackageReference Include="Microsoft.OpenApi" Version="2.7.5" />
+  </ItemGroup>
+  <PropertyGroup>
+    <UserSecretsId>camera-analytics-local-demo</UserSecretsId>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Design" Version="10.0.13" PrivateAssets="all" />
+  </ItemGroup>
+</Project>

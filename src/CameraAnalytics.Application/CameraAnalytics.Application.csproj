@@ -1,0 +1,5 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <ItemGroup>
+    <ProjectReference Include="../CameraAnalytics.Domain/CameraAnalytics.Domain.csproj" />
+  </ItemGroup>
+</Project>

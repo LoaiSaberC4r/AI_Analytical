@@ -1,0 +1,13 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/CameraAnalytics.Api/CameraAnalytics.Api.csproj" />
+    <Project Path="src/CameraAnalytics.Application/CameraAnalytics.Application.csproj" />
+    <Project Path="src/CameraAnalytics.Contracts/CameraAnalytics.Contracts.csproj" />
+    <Project Path="src/CameraAnalytics.Domain/CameraAnalytics.Domain.csproj" />
+    <Project Path="src/CameraAnalytics.Infrastructure/CameraAnalytics.Infrastructure.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/CameraAnalytics.IntegrationTests/CameraAnalytics.IntegrationTests.csproj" />
+    <Project Path="tests/CameraAnalytics.UnitTests/CameraAnalytics.UnitTests.csproj" />
+  </Folder>
+</Solution>

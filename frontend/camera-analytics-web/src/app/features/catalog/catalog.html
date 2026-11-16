@@ -1,0 +1,93 @@
+@if (kind() === 'zones') { <a routerLink="/cameras" class="back-link">← Cameras</a> }
+<header class="page-heading">
+  <div>
+    <h1>{{ kind() === 'sites' ? 'Sites' : kind() === 'cameras' ? 'Cameras' : 'Zones' }}</h1>
+    <p>{{ kind() === 'sites' ? 'Manage locations and their reporting time zones.' :
+      kind() === 'cameras' ? 'Register camera IDs from your MQTT publisher.' : linkedCamera()?.name ?? 'Manage zones for this camera.' }}</p>
+  </div>
+  <button class="primary" type="button" (click)="open()">Add {{ noun() }}</button>
+</header>
+
+@if (editor() !== 'closed') {
+  <section class="panel editor">
+    <div class="panel-title"><h2>{{ editor() === 'create' ? 'Add' : 'Edit' }} {{ noun() }}</h2></div>
+    <form [formGroup]="form()" (ngSubmit)="save()">
+      <div class="fields">
+        <label>Name<input formControlName="name" maxlength="160"></label>
+        @if (kind() === 'sites') {
+          <label>Site code<input formControlName="code" maxlength="64"></label>
+          <label>Time zone ID<input formControlName="timeZoneId" placeholder="Africa/Cairo" maxlength="128"></label>
+        } @else {
+          <label>External {{ noun() }} ID<input formControlName="externalId" maxlength="128"></label>
+        }
+        @if (kind() === 'cameras') {
+          <label>Site<select formControlName="siteId"><option value="">Select a site</option>
+            @for (site of siteOptions(); track site.id) { <option [value]="site.id">{{ site.name }}</option> }
+          </select></label>
+        }
+        @if (kind() === 'zones') {
+          <label>Capacity<input type="number" min="1" formControlName="capacity"></label>
+          <label>Warning threshold (%)<input type="number" min="0" formControlName="warningThresholdPercent" placeholder="Use default"></label>
+          <label>Critical threshold (%)<input type="number" min="0" formControlName="criticalThresholdPercent" placeholder="Use default"></label>
+        }
+        <label class="span-all">Description<textarea formControlName="description" rows="2" maxlength="1000"></textarea></label>
+      </div>
+      @if (form().touched && form().invalid) {
+        <p class="form-error" role="alert">{{ form().hasError('thresholds') ? 'The warning threshold must be lower than the critical threshold.' :
+          'Enter the required values. External IDs cannot contain slash or wildcards. Capacity must be a positive whole number.' }}</p>
+      }
+      @if (saveError()) { <p class="form-error" role="alert">{{ saveError() }}</p> }
+      <div class="actions">
+        <button class="primary" type="submit" [disabled]="saving()">{{ saving() ? 'Saving…' : 'Save ' + noun() }}</button>
+        <button class="secondary" type="button" [disabled]="saving()" (click)="editor.set('closed')">Cancel</button>
+      </div>
+    </form>
+  </section>
+}
+
+<section class="panel">
+  <form class="toolbar" (submit)="$event.preventDefault(); reload()">
+    <label>Search<input [value]="search()" (input)="search.set($any($event.target).value)" maxlength="128" [placeholder]="'Search ' + kind()"></label>
+    @if (kind() === 'cameras') {
+      <label>Site<select [value]="siteFilter()" (change)="siteFilter.set($any($event.target).value); reload()"><option value="">All sites</option>
+        @for (site of siteOptions(); track site.id) { <option [value]="site.id">{{ site.name }}</option> }
+      </select></label>
+    }
+    <button class="secondary" type="submit">Search</button>
+  </form>
+  @if (error()) { <p class="notice error" role="alert">{{ error() }}</p> }
+  @if (loading()) { <p class="notice" role="status">Loading {{ kind() }}…</p> }
+  @else if (!result()?.items?.length && !error()) {
+    <div class="empty"><h2>No {{ kind() }} found</h2><p>Register a {{ noun() }} or change your search.</p></div>
+  } @else if (result(); as data) {
+    <ca-table [headers]="headers()">
+      @for (row of data.items; track row.id) {
+        <tr>
+          <td><strong>{{ row.name }}</strong>@if (row.description) { <small>{{ row.description }}</small> }</td>
+          @if ('code' in row) { <td><code>{{ row.code }}</code></td><td>{{ row.timeZoneId }}</td> }
+          @if ('mqttTopic' in row) {
+            <td>{{ row.siteName }}</td><td><code>{{ row.mqttTopic }}</code></td>
+            <td><a [routerLink]="['/cameras',row.id,'zones']">{{ row.zonesCount }} zones</a></td>
+          }
+          @if ('capacity' in row) {
+            <td><code>{{ row.externalZoneId }}</code></td><td>{{ row.capacity ?? '—' }}</td>
+            <td>{{ row.warningThresholdPercent }}% / {{ row.criticalThresholdPercent }}%</td>
+          }
+          <td><span class="pill" [class.good]="row.isActive">{{ row.isActive ? 'Enabled' : 'Disabled' }}</span></td>
+          <td><div class="actions compact">
+            <button class="text-button" type="button" (click)="open(row)">Edit</button>
+            <button class="text-button" type="button" [disabled]="saving()" (click)="toggle(row)">{{ row.isActive ? 'Disable' : 'Enable' }}</button>
+            @if ('mqttTopic' in row) { <a [routerLink]="['/live',row.id]">Live</a> }
+          </div></td>
+        </tr>
+      }
+    </ca-table>
+    @if (data.totalPages > 1) {
+      <div class="pager">
+        <button class="secondary" type="button" [disabled]="page() <= 1" (click)="reload(page()-1)">Previous</button>
+        <span>Page {{ data.page }} of {{ data.totalPages }}</span>
+        <button class="secondary" type="button" [disabled]="page() >= data.totalPages" (click)="reload(page()+1)">Next</button>
+      </div>
+    }
+  }
+</section>

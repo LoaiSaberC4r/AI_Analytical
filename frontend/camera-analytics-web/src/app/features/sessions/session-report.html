@@ -1,0 +1,70 @@
+<a routerLink="/sessions" class="back-link">← Sessions</a>
+<header class="page-heading">
+  <div><h1>{{ data()?.session?.sourceName ?? 'Session report' }}</h1><p>{{ data()?.session?.cameraName ?? 'Camera analytics for the selected processing session' }}</p></div>
+  @if (data(); as report) { <span class="pill" [class.good]="report.session.status === 'running'">{{ report.session.status }}</span> }
+</header>
+
+<section class="panel filter-panel">
+  <form [formGroup]="form" (ngSubmit)="apply()">
+    <div class="fields">
+      @if (data()?.analytics?.period?.timeBasis !== 'eventTime') {
+        <label>Start video position (ms)<input type="number" min="0" formControlName="start" placeholder="First observed"></label>
+        <label>End video position (ms)<input type="number" min="0" formControlName="end" placeholder="Last observed"></label>
+      }
+      <label>Interval<select formControlName="interval"><option value="minute">Minute</option><option value="hour">Hour</option><option value="day">Day</option></select></label>
+    </div>
+    @if (inputError()) { <p class="form-error" role="alert">{{ inputError() }}</p> }
+    <div class="actions"><button class="primary" type="submit">Run report</button></div>
+  </form>
+</section>
+
+@if (error()) { <p class="notice error" role="alert">{{ error() }}</p> }
+@else if (loading()) { <p class="notice" role="status">Loading session report…</p> }
+@else if (data(); as report) {
+  <section class="panel">
+    <div class="panel-title"><div><h2>Processing timeline</h2><p>{{ report.analytics.period.timeBasis === 'sourceTime'
+      ? 'Positions are relative to the source video.' : 'Live event time · ' + report.analytics.period.timeZoneId }}</p></div></div>
+    @if (report.untimedVideoObservations > 0) {
+      <p class="notice">{{ report.untimedVideoObservations }} observations had no video position and were omitted from the timeline.</p>
+    }
+    <dl class="camera-meta">
+      <div><dt>Session ID</dt><dd><code>{{ report.session.externalSessionId }}</code></dd></div>
+      @if (report.analytics.period.timeBasis === 'sourceTime') {
+        <div><dt>First video position</dt><dd>{{ videoTime(report.session.firstSourceTimeMs,true) }}</dd></div>
+        <div><dt>Last video position</dt><dd>{{ videoTime(report.session.lastSourceTimeMs,true) }}</dd></div>
+      }
+      <div><dt>First message received</dt><dd>{{ report.session.startedAtUtc | date:'medium' }}</dd></div>
+      <div><dt>Last message received</dt><dd>{{ report.session.lastReceivedAtUtc | date:'medium' }}</dd></div>
+    </dl>
+  </section>
+  <div class="dashboard-grid equal">
+    <section class="panel">
+      <div class="panel-title"><div><h2>Occupancy by zone</h2><p>Time-weighted average</p></div></div>
+      @if (occupancy().length) { <ca-chart label="Session occupancy" [labels]="labels()" [lines]="occupancy()" /> }
+      @else { <p class="notice">No covered occupancy intervals in this selection.</p> }
+    </section>
+    <section class="panel">
+      <div class="panel-title"><h2>Traffic by zone</h2>
+        <select aria-label="Session traffic metric" [value]="metric()" (change)="metric.set($any($event.target).value)">
+          <option value="arrivals">Arrivals</option><option value="departures">Departures</option>
+          <option value="entries">Entries</option><option value="exits">Exits</option><option value="wrongWayEvents">Wrong-way events</option>
+        </select>
+      </div>
+      @if (traffic().length) { <ca-chart label="Session traffic" [labels]="labels()" [lines]="traffic()" /> }
+      @else { <p class="notice">No traffic observations in this selection.</p> }
+    </section>
+  </div>
+  <section class="panel">
+    <div class="panel-title"><div><h2>Zone comparison</h2><p>Coverage and observed metrics for the selected session.</p></div></div>
+    @if (report.analytics.zones.length) {
+      <ca-table [headers]="['Zone','Weighted occupancy','Observed peak','Arrivals','Entries','Estimated visits','Estimated avg. dwell','Coverage']">
+        @for (zone of report.analytics.zones; track zone.zoneId) {
+          <tr><td><strong>{{ zone.zoneName }}</strong></td><td>{{ number(zone.averageOccupancy) }}</td><td>{{ number(zone.peakOccupancy) }}</td>
+            <td>{{ number(zone.traffic.arrivals) }}</td><td>{{ number(zone.traffic.entries) }}</td>
+            <td>{{ zone.estimatedCompletedVisits }}</td><td>{{ number(zone.estimatedHistoricalAverageDwellSeconds,' s') }}</td>
+            <td>{{ number(zone.dataQuality.coveragePercent,'%') }}</td></tr>
+        }
+      </ca-table>
+    } @else { <p class="notice">No zones registered for this camera.</p> }
+  </section>
+}

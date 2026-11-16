@@ -1,0 +1,12 @@
+**/bin/
+**/obj/
+**/node_modules/
+**/.angular/
+**/dist/
+TestResults/
+coverage/
+.vs/
+.env
+*.user
+appsettings.Local.json
+PlaywrightArtifacts/
