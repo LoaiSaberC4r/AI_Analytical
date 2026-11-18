@@ -6,6 +6,7 @@ namespace CameraAnalytics.Api.Controllers;
 [ApiController]
 [Route("api/v1")]
 [ProducesResponseType<ProblemDetails>(404)]
+[Microsoft.AspNetCore.Authorization.Authorize(Policy = Extensions.SiteAccess.Administration)]
 public sealed class MonitoringController(IMonitoringQueries monitoring) : ControllerBase
 {
     [HttpGet("sites/{siteId:guid}/live")]

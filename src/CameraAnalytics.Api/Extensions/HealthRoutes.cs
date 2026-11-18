@@ -14,8 +14,8 @@ public static class HealthRoutes
 {
     public static void MapAnalyticsHealth(this WebApplication app)
     {
-        app.MapGet("/api/v1/health/live", () => new LiveHealth("Healthy")).WithTags("Health");
-        app.MapGet("/api/v1/health/ready", Ready).WithTags("Health").Produces<ReadyHealth>(503);
+        app.MapGet("/api/v1/health/live", () => new LiveHealth("Healthy")).WithTags("Health").AllowAnonymous();
+        app.MapGet("/api/v1/health/ready", Ready).WithTags("Health").Produces<ReadyHealth>(503).AllowAnonymous();
     }
 
     private static async Task<Results<Ok<ReadyHealth>, JsonHttpResult<ReadyHealth>>> Ready(AnalyticsDb db,

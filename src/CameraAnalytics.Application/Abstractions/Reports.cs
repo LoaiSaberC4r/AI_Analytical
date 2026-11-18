@@ -9,7 +9,11 @@ public sealed record ReportFilter(Guid? SiteId = null, Guid? CameraId = null, Gu
 
 public sealed record ReportPeriod(string SourceType, string TimeBasis, string Interval, string TimeZoneId,
     DateTime? From, DateTime? To, long? FromSourceTimeMs, long? ToSourceTimeMs,
-    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] long? VideoLoop = null);
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] long? VideoLoop = null)
+{
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public Guid? SessionId { get; init; }
+}
 public sealed record PeriodPoint(DateTime? StartUtc, DateTime? EndUtc, DateTimeOffset? LocalStart,
     long? StartSourceTimeMs, long? EndSourceTimeMs);
 public sealed record DataQuality(string Kind, int SampleCount, double CoveragePercent, double ObservationDurationSeconds,

@@ -9,6 +9,7 @@ namespace CameraAnalytics.Api.Controllers;
 [ProducesResponseType<ProblemDetails>(400)]
 [ProducesResponseType<ProblemDetails>(404)]
 [ProducesResponseType<ProblemDetails>(409)]
+[Microsoft.AspNetCore.Authorization.Authorize(Policy = Extensions.SiteAccess.Administration)]
 public sealed class CatalogController(ICatalogQueries queries, ICatalogCommands commands) : ControllerBase
 {
     [HttpGet("sites")]

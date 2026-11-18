@@ -23,6 +23,170 @@ namespace CameraAnalytics.Infrastructure.Persistence.Migrations
 
             SqlServerModelBuilderExtensions.UseIdentityColumns(modelBuilder);
 
+            modelBuilder.Entity("CameraAnalytics.Domain.Entities.AlertRule", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<bool>("AllowVideo")
+                        .HasColumnType("bit");
+
+                    b.Property<Guid>("CameraId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid?>("CameraZoneId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<int>("CooldownSeconds")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("Description")
+                        .HasMaxLength(1000)
+                        .HasColumnType("nvarchar(1000)");
+
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("bit");
+
+                    b.Property<string>("Kind")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("nvarchar(32)");
+
+                    b.Property<DateTime?>("LastResolvedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<double>("MinimumCoveragePercent")
+                        .HasColumnType("float");
+
+                    b.Property<int>("MinimumObservedSeconds")
+                        .HasColumnType("int");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(160)
+                        .HasColumnType("nvarchar(160)");
+
+                    b.Property<int>("RecoverySeconds")
+                        .HasColumnType("int");
+
+                    b.Property<byte[]>("RowVersion")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("rowversion");
+
+                    b.Property<string>("Severity")
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .HasColumnType("nvarchar(16)");
+
+                    b.Property<Guid>("SiteId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<double>("Threshold")
+                        .HasColumnType("float");
+
+                    b.Property<DateTime>("UpdatedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int>("WindowSeconds")
+                        .HasColumnType("int");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("CameraId");
+
+                    b.HasIndex("CameraZoneId");
+
+                    b.HasIndex("Name");
+
+                    b.HasIndex("SiteId", "IsActive");
+
+                    b.ToTable("AlertRules");
+                });
+
+            modelBuilder.Entity("CameraAnalytics.Domain.Entities.AnalyticsAlert", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime?>("AcknowledgedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("AcknowledgedBy")
+                        .HasMaxLength(256)
+                        .HasColumnType("nvarchar(256)");
+
+                    b.Property<Guid>("AlertRuleId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid>("CameraId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid?>("CameraZoneId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("EvidenceJson")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("Kind")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("nvarchar(32)");
+
+                    b.Property<DateTime>("LastObservedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<DateTime>("OpenedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("ResolutionReason")
+                        .HasMaxLength(64)
+                        .HasColumnType("nvarchar(64)");
+
+                    b.Property<DateTime?>("ResolvedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("ResolvedBy")
+                        .HasMaxLength(256)
+                        .HasColumnType("nvarchar(256)");
+
+                    b.Property<Guid?>("SessionId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("Severity")
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .HasColumnType("nvarchar(16)");
+
+                    b.Property<Guid>("SiteId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<long>("StateVersion")
+                        .HasColumnType("bigint");
+
+                    b.Property<long?>("VideoLoop")
+                        .HasColumnType("bigint");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("AlertRuleId")
+                        .IsUnique()
+                        .HasFilter("[ResolvedAtUtc] IS NULL");
+
+                    b.HasIndex("ResolvedAtUtc");
+
+                    b.HasIndex("SiteId", "OpenedAtUtc");
+
+                    b.ToTable("AnalyticsAlerts");
+                });
+
             modelBuilder.Entity("CameraAnalytics.Domain.Entities.AnalyticsSession", b =>
                 {
                     b.Property<Guid>("Id")
@@ -194,6 +358,52 @@ namespace CameraAnalytics.Infrastructure.Persistence.Migrations
                     b.ToTable("CameraCurrentStates");
                 });
 
+            modelBuilder.Entity("CameraAnalytics.Domain.Entities.CameraMinuteAggregate", b =>
+                {
+                    b.Property<Guid>("CameraId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime>("MinuteStartUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<double?>("AverageFps")
+                        .HasColumnType("float");
+
+                    b.Property<double?>("AverageStaffCount")
+                        .HasColumnType("float");
+
+                    b.Property<int>("GapCount")
+                        .HasColumnType("int");
+
+                    b.Property<double?>("MaximumFps")
+                        .HasColumnType("float");
+
+                    b.Property<double?>("MinimumFps")
+                        .HasColumnType("float");
+
+                    b.Property<decimal?>("MissingSequences")
+                        .HasPrecision(38)
+                        .HasColumnType("decimal(38,0)");
+
+                    b.Property<double>("ObservationDurationSeconds")
+                        .HasColumnType("float");
+
+                    b.Property<int?>("PeakStaffCount")
+                        .HasColumnType("int");
+
+                    b.Property<int>("SampleCount")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime>("UpdatedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.HasKey("CameraId", "MinuteStartUtc");
+
+                    b.HasIndex("MinuteStartUtc");
+
+                    b.ToTable("CameraMinuteAggregates");
+                });
+
             modelBuilder.Entity("CameraAnalytics.Domain.Entities.CameraSnapshot", b =>
                 {
                     b.Property<Guid>("Id")
@@ -214,6 +424,9 @@ namespace CameraAnalytics.Infrastructure.Persistence.Migrations
                     b.Property<bool>("IsOrdered")
                         .HasColumnType("bit");
 
+                    b.Property<long?>("MissingSequences")
+                        .HasColumnType("bigint");
+
                     b.Property<long?>("ObservationEndSourceMs")
                         .HasColumnType("bigint");
 
@@ -228,6 +441,10 @@ namespace CameraAnalytics.Infrastructure.Persistence.Migrations
 
                     b.Property<Guid>("ReceivedMessageId")
                         .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("ReportedMetadataJson")
+                        .HasMaxLength(1024)
+                        .HasColumnType("nvarchar(1024)");
 
                     b.Property<long>("Sequence")
                         .HasColumnType("bigint");
@@ -248,6 +465,9 @@ namespace CameraAnalytics.Infrastructure.Persistence.Migrations
 
                     b.HasIndex("ReceivedMessageId")
                         .IsUnique();
+
+                    b.HasIndex("SourceTimestampUtc")
+                        .HasFilter("[IsOrdered] = 1");
 
                     b.HasIndex("AnalyticsSessionId", "Sequence");
 
@@ -322,6 +542,93 @@ namespace CameraAnalytics.Infrastructure.Persistence.Migrations
                         });
                 });
 
+            modelBuilder.Entity("CameraAnalytics.Domain.Entities.CongestionEpisode", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid>("AnalyticsSessionId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid>("CameraZoneId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<int>("Capacity")
+                        .HasColumnType("int");
+
+                    b.Property<double>("CriticalThresholdPercent")
+                        .HasColumnType("float");
+
+                    b.Property<long?>("EndSourceTimeMs")
+                        .HasColumnType("bigint");
+
+                    b.Property<DateTime>("EndedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int>("MinimumObservedSeconds")
+                        .HasColumnType("int");
+
+                    b.Property<double>("ObservedAboveCriticalSeconds")
+                        .HasColumnType("float");
+
+                    b.Property<double>("ObservedAboveWarningSeconds")
+                        .HasColumnType("float");
+
+                    b.Property<string>("ResolutionReason")
+                        .IsRequired()
+                        .HasMaxLength(48)
+                        .HasColumnType("nvarchar(48)");
+
+                    b.Property<int>("SampleCount")
+                        .HasColumnType("int");
+
+                    b.Property<long?>("StartSourceTimeMs")
+                        .HasColumnType("bigint");
+
+                    b.Property<DateTime>("StartedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .HasColumnType("nvarchar(16)");
+
+                    b.Property<long?>("VideoLoop")
+                        .HasColumnType("bigint");
+
+                    b.Property<double>("WarningThresholdPercent")
+                        .HasColumnType("float");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("EndedAtUtc");
+
+                    b.HasIndex("CameraZoneId", "StartedAtUtc");
+
+                    b.HasIndex("AnalyticsSessionId", "VideoLoop", "StartSourceTimeMs");
+
+                    b.ToTable("CongestionEpisodes");
+                });
+
+            modelBuilder.Entity("CameraAnalytics.Domain.Entities.DirtyCameraMinute", b =>
+                {
+                    b.Property<Guid>("CameraId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime>("MinuteStartUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<DateTime>("DirtyAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.HasKey("CameraId", "MinuteStartUtc");
+
+                    b.HasIndex("MinuteStartUtc", "DirtyAtUtc");
+
+                    b.ToTable("DirtyCameraMinutes");
+                });
+
             modelBuilder.Entity("CameraAnalytics.Domain.Entities.DirtyZoneHour", b =>
                 {
                     b.Property<Guid>("CameraZoneId")
@@ -342,6 +649,24 @@ namespace CameraAnalytics.Infrastructure.Persistence.Migrations
                     b.HasIndex("DirtyAtUtc");
 
                     b.ToTable("DirtyZoneHours");
+                });
+
+            modelBuilder.Entity("CameraAnalytics.Domain.Entities.DirtyZoneMinute", b =>
+                {
+                    b.Property<Guid>("CameraZoneId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime>("MinuteStartUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<DateTime>("DirtyAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.HasKey("CameraZoneId", "MinuteStartUtc");
+
+                    b.HasIndex("MinuteStartUtc", "DirtyAtUtc");
+
+                    b.ToTable("DirtyZoneMinutes");
                 });
 
             modelBuilder.Entity("CameraAnalytics.Domain.Entities.IngestionRejection", b =>
@@ -376,7 +701,25 @@ namespace CameraAnalytics.Infrastructure.Persistence.Migrations
 
                     b.HasIndex("ReceivedAtUtc");
 
+                    b.HasIndex("Topic", "ReceivedAtUtc");
+
                     b.ToTable("IngestionRejections");
+                });
+
+            modelBuilder.Entity("CameraAnalytics.Domain.Entities.MinuteBackfillState", b =>
+                {
+                    b.Property<int>("Id")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime>("EndUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<DateTime>("NextMinuteUtc")
+                        .HasColumnType("datetime2");
+
+                    b.HasKey("Id");
+
+                    b.ToTable("MinuteBackfills");
                 });
 
             modelBuilder.Entity("CameraAnalytics.Domain.Entities.ReceivedAnalyticsMessage", b =>
@@ -475,6 +818,51 @@ namespace CameraAnalytics.Infrastructure.Persistence.Migrations
                     b.HasIndex("Name");
 
                     b.ToTable("Sites");
+                });
+
+            modelBuilder.Entity("CameraAnalytics.Domain.Entities.SiteFloor", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("Description")
+                        .HasMaxLength(1000)
+                        .HasColumnType("nvarchar(1000)");
+
+                    b.Property<int>("DisplayOrder")
+                        .HasColumnType("int");
+
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("bit");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(160)
+                        .HasColumnType("nvarchar(160)");
+
+                    b.Property<byte[]>("RowVersion")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("rowversion");
+
+                    b.Property<Guid>("SiteId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime>("UpdatedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("Name");
+
+                    b.HasIndex("SiteId", "DisplayOrder");
+
+                    b.ToTable("SiteFloors");
                 });
 
             modelBuilder.Entity("CameraAnalytics.Domain.Entities.TrackedVisit", b =>
@@ -679,6 +1067,10 @@ namespace CameraAnalytics.Infrastructure.Persistence.Migrations
                     b.Property<Guid>("AnalyticsSessionId")
                         .HasColumnType("uniqueidentifier");
 
+                    b.Property<string>("CongestionProgressJson")
+                        .HasMaxLength(1536)
+                        .HasColumnType("nvarchar(1536)");
+
                     b.Property<long>("Entry")
                         .HasColumnType("bigint");
 
@@ -826,6 +1218,110 @@ namespace CameraAnalytics.Infrastructure.Persistence.Migrations
                     b.ToTable("ZoneHourlyAggregates");
                 });
 
+            modelBuilder.Entity("CameraAnalytics.Domain.Entities.ZoneMinuteAggregate", b =>
+                {
+                    b.Property<Guid>("CameraZoneId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime>("MinuteStartUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<double?>("AboveCriticalSeconds")
+                        .HasColumnType("float");
+
+                    b.Property<double?>("AboveWarningSeconds")
+                        .HasColumnType("float");
+
+                    b.Property<decimal>("ArrivalsDelta")
+                        .HasPrecision(38)
+                        .HasColumnType("decimal(38,0)");
+
+                    b.Property<double?>("AverageOccupancy")
+                        .HasColumnType("float");
+
+                    b.Property<double?>("AverageUtilizationPercent")
+                        .HasColumnType("float");
+
+                    b.Property<double?>("CapacityCoveredSeconds")
+                        .HasColumnType("float");
+
+                    b.Property<int>("CounterBaselineCount")
+                        .HasColumnType("int");
+
+                    b.Property<int>("CounterResetCount")
+                        .HasColumnType("int");
+
+                    b.Property<double>("CoveragePercent")
+                        .HasColumnType("float");
+
+                    b.Property<string>("DataQuality")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("nvarchar(32)");
+
+                    b.Property<decimal>("DeparturesDelta")
+                        .HasPrecision(38)
+                        .HasColumnType("decimal(38,0)");
+
+                    b.Property<decimal>("EntryDelta")
+                        .HasPrecision(38)
+                        .HasColumnType("decimal(38,0)");
+
+                    b.Property<int>("EstimatedCompletedVisits")
+                        .HasColumnType("int");
+
+                    b.Property<double?>("EstimatedTotalDwellSeconds")
+                        .HasColumnType("float");
+
+                    b.Property<decimal>("ExitDelta")
+                        .HasPrecision(38)
+                        .HasColumnType("decimal(38,0)");
+
+                    b.Property<int>("GapCount")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime?>("LatestReportedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<double?>("LatestReportedDwellSeconds")
+                        .HasColumnType("float");
+
+                    b.Property<double?>("LongestActiveDwellSeconds")
+                        .HasColumnType("float");
+
+                    b.Property<double>("ObservationDurationSeconds")
+                        .HasColumnType("float");
+
+                    b.Property<DateTime?>("PeakAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int?>("PeakOccupancy")
+                        .HasColumnType("int");
+
+                    b.Property<int>("SampleCount")
+                        .HasColumnType("int");
+
+                    b.Property<int>("UncertainVisits")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime>("UpdatedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<decimal>("WrongWayInDelta")
+                        .HasPrecision(38)
+                        .HasColumnType("decimal(38,0)");
+
+                    b.Property<decimal>("WrongWayOutDelta")
+                        .HasPrecision(38)
+                        .HasColumnType("decimal(38,0)");
+
+                    b.HasKey("CameraZoneId", "MinuteStartUtc");
+
+                    b.HasIndex("MinuteStartUtc");
+
+                    b.ToTable("ZoneMinuteAggregates");
+                });
+
             modelBuilder.Entity("CameraAnalytics.Domain.Entities.ZoneSnapshot", b =>
                 {
                     b.Property<Guid>("Id")
@@ -840,6 +1336,12 @@ namespace CameraAnalytics.Infrastructure.Persistence.Migrations
 
                     b.Property<Guid>("CameraZoneId")
                         .HasColumnType("uniqueidentifier");
+
+                    b.Property<int?>("CapacityAtObservation")
+                        .HasColumnType("int");
+
+                    b.Property<double?>("CriticalThresholdAtObservation")
+                        .HasColumnType("float");
 
                     b.Property<long>("Entry")
                         .HasColumnType("bigint");
@@ -871,6 +1373,10 @@ namespace CameraAnalytics.Infrastructure.Persistence.Migrations
                     b.Property<double>("ReportedAverageDwellSeconds")
                         .HasColumnType("float");
 
+                    b.Property<string>("ReportedMetadataJson")
+                        .HasMaxLength(1024)
+                        .HasColumnType("nvarchar(1024)");
+
                     b.Property<long>("Sequence")
                         .HasColumnType("bigint");
 
@@ -882,6 +1388,9 @@ namespace CameraAnalytics.Infrastructure.Persistence.Migrations
 
                     b.Property<long?>("VideoLoop")
                         .HasColumnType("bigint");
+
+                    b.Property<double?>("WarningThresholdAtObservation")
+                        .HasColumnType("float");
 
                     b.Property<long>("WrongWayIn")
                         .HasColumnType("bigint");
@@ -897,6 +1406,9 @@ namespace CameraAnalytics.Infrastructure.Persistence.Migrations
 
                     b.HasKey("Id");
 
+                    b.HasIndex("SourceTimestampUtc")
+                        .HasFilter("[IsOrdered] = 1");
+
                     b.HasIndex("CameraZoneId", "ReceivedAtUtc");
 
                     b.HasIndex("CameraZoneId", "SourceTimestampUtc");
@@ -906,7 +1418,70 @@ namespace CameraAnalytics.Infrastructure.Persistence.Migrations
 
                     b.HasIndex("AnalyticsSessionId", "CameraZoneId", "VideoLoop", "SourceTimeMs", "Sequence");
 
-                    b.ToTable("ZoneSnapshots");
+                    b.ToTable("ZoneSnapshots", t =>
+                        {
+                            t.HasCheckConstraint("CK_ZoneSnapshots_Capacity", "[CapacityAtObservation] IS NULL OR [CapacityAtObservation] > 0");
+                        });
+                });
+
+            modelBuilder.Entity("CameraAnalytics.Domain.Entities.ZoneSpatialLayout", b =>
+                {
+                    b.Property<Guid>("SiteFloorId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid>("CameraZoneId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<byte[]>("RowVersion")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("rowversion");
+
+                    b.Property<DateTime>("UpdatedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("VerticesJson")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.HasKey("SiteFloorId", "CameraZoneId");
+
+                    b.HasIndex("CameraZoneId");
+
+                    b.ToTable("ZoneSpatialLayouts", t =>
+                        {
+                            t.HasCheckConstraint("CK_ZoneSpatialLayouts_Geometry", "ISJSON([VerticesJson], ARRAY) = 1");
+                        });
+                });
+
+            modelBuilder.Entity("CameraAnalytics.Domain.Entities.AlertRule", b =>
+                {
+                    b.HasOne("CameraAnalytics.Domain.Entities.Camera", null)
+                        .WithMany()
+                        .HasForeignKey("CameraId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("CameraAnalytics.Domain.Entities.CameraZone", null)
+                        .WithMany()
+                        .HasForeignKey("CameraZoneId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("CameraAnalytics.Domain.Entities.Site", null)
+                        .WithMany()
+                        .HasForeignKey("SiteId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("CameraAnalytics.Domain.Entities.AnalyticsAlert", b =>
+                {
+                    b.HasOne("CameraAnalytics.Domain.Entities.AlertRule", null)
+                        .WithMany()
+                        .HasForeignKey("AlertRuleId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
                 });
 
             modelBuilder.Entity("CameraAnalytics.Domain.Entities.AnalyticsSession", b =>
@@ -948,6 +1523,15 @@ namespace CameraAnalytics.Infrastructure.Persistence.Migrations
                     b.Navigation("Camera");
                 });
 
+            modelBuilder.Entity("CameraAnalytics.Domain.Entities.CameraMinuteAggregate", b =>
+                {
+                    b.HasOne("CameraAnalytics.Domain.Entities.Camera", null)
+                        .WithMany()
+                        .HasForeignKey("CameraId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+                });
+
             modelBuilder.Entity("CameraAnalytics.Domain.Entities.CameraSnapshot", b =>
                 {
                     b.HasOne("CameraAnalytics.Domain.Entities.AnalyticsSession", "Session")
@@ -982,7 +1566,44 @@ namespace CameraAnalytics.Infrastructure.Persistence.Migrations
                     b.Navigation("Camera");
                 });
 
+            modelBuilder.Entity("CameraAnalytics.Domain.Entities.CongestionEpisode", b =>
+                {
+                    b.HasOne("CameraAnalytics.Domain.Entities.AnalyticsSession", "Session")
+                        .WithMany()
+                        .HasForeignKey("AnalyticsSessionId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("CameraAnalytics.Domain.Entities.CameraZone", "Zone")
+                        .WithMany()
+                        .HasForeignKey("CameraZoneId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("Session");
+
+                    b.Navigation("Zone");
+                });
+
+            modelBuilder.Entity("CameraAnalytics.Domain.Entities.DirtyCameraMinute", b =>
+                {
+                    b.HasOne("CameraAnalytics.Domain.Entities.Camera", null)
+                        .WithMany()
+                        .HasForeignKey("CameraId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+                });
+
             modelBuilder.Entity("CameraAnalytics.Domain.Entities.DirtyZoneHour", b =>
+                {
+                    b.HasOne("CameraAnalytics.Domain.Entities.CameraZone", null)
+                        .WithMany()
+                        .HasForeignKey("CameraZoneId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("CameraAnalytics.Domain.Entities.DirtyZoneMinute", b =>
                 {
                     b.HasOne("CameraAnalytics.Domain.Entities.CameraZone", null)
                         .WithMany()
@@ -996,6 +1617,15 @@ namespace CameraAnalytics.Infrastructure.Persistence.Migrations
                     b.HasOne("CameraAnalytics.Domain.Entities.AnalyticsSession", null)
                         .WithMany()
                         .HasForeignKey("AnalyticsSessionId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("CameraAnalytics.Domain.Entities.SiteFloor", b =>
+                {
+                    b.HasOne("CameraAnalytics.Domain.Entities.Site", null)
+                        .WithMany()
+                        .HasForeignKey("SiteId")
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
                 });
@@ -1085,6 +1715,15 @@ namespace CameraAnalytics.Infrastructure.Persistence.Migrations
                         .IsRequired();
                 });
 
+            modelBuilder.Entity("CameraAnalytics.Domain.Entities.ZoneMinuteAggregate", b =>
+                {
+                    b.HasOne("CameraAnalytics.Domain.Entities.CameraZone", null)
+                        .WithMany()
+                        .HasForeignKey("CameraZoneId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+                });
+
             modelBuilder.Entity("CameraAnalytics.Domain.Entities.ZoneSnapshot", b =>
                 {
                     b.HasOne("CameraAnalytics.Domain.Entities.AnalyticsSession", "Session")
@@ -1106,6 +1745,23 @@ namespace CameraAnalytics.Infrastructure.Persistence.Migrations
                         .IsRequired();
 
                     b.Navigation("Session");
+                });
+
+            modelBuilder.Entity("CameraAnalytics.Domain.Entities.ZoneSpatialLayout", b =>
+                {
+                    b.HasOne("CameraAnalytics.Domain.Entities.CameraZone", "Zone")
+                        .WithMany()
+                        .HasForeignKey("CameraZoneId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("CameraAnalytics.Domain.Entities.SiteFloor", null)
+                        .WithMany()
+                        .HasForeignKey("SiteFloorId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("Zone");
                 });
 #pragma warning restore 612, 618
         }

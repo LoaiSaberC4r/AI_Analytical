@@ -1,4 +1,6 @@
 using System.Security.Cryptography;
+using System.Diagnostics;
+using System.Text.Json;
 using CameraAnalytics.Application.Abstractions;
 using CameraAnalytics.Application.Analytics;
 using CameraAnalytics.Application.Common;
@@ -12,13 +14,20 @@ using Microsoft.Extensions.Options;
 namespace CameraAnalytics.Infrastructure.Analytics;
 
 public sealed class AnalyticsIngestor(AnalyticsDb db, IMqttPayloadReader reader, TimeProvider clock,
-    IOptions<AnalyticsOptions> analyticsOptions, IOptions<MqttOptions> mqttOptions,
+    IOptions<AnalyticsOptions> analyticsOptions, IOptions<MqttOptions> mqttOptions, IOptions<MinuteAggregationOptions> minuteOptions,
+    IOptions<CongestionOptions> congestionOptions,
     IAnalyticsNotifications notifications, ILogger<AnalyticsIngestor> logger) : IAnalyticsIngestor
 {
+    private static readonly JsonSerializerOptions MetadataJson = new(JsonSerializerDefaults.Web)
+    {
+        DefaultIgnoreCondition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull
+    };
+
     private AnalyticsOptions Policy => analyticsOptions.Value;
 
     public async Task<IngestResult> Process(string topic, ReadOnlyMemory<byte> payload, DateTime receivedAtUtc, CancellationToken ct)
     {
+        var started = Stopwatch.GetTimestamp();
         var maxBytes = mqttOptions.Value.MaxPayloadBytes;
         var hash = Convert.ToHexString(SHA256.HashData(payload.Span[..Math.Min(payload.Length, maxBytes)]));
         var parsed = payload.Length <= maxBytes ? reader.Read(topic, payload.Span) : new PayloadRead(null, "payload_too_large");
@@ -32,6 +41,7 @@ public sealed class AnalyticsIngestor(AnalyticsDb db, IMqttPayloadReader reader,
         CommittedAnalytics? notice = null;
         await using (var transaction = await WriteTransaction.Begin(db, ct))
         {
+            var rollups = new IngestionRollupKeys(minuteOptions.Value.Enabled);
             var camera = await db.Cameras.Include(x => x.Site).SingleOrDefaultAsync(x => x.ExternalCameraId == data.ExternalCameraId, ct);
             if (camera is null)
                 return await Reject(topic, hash, receivedAtUtc, "unknown_camera", ct, transaction);
@@ -66,7 +76,12 @@ public sealed class AnalyticsIngestor(AnalyticsDb db, IMqttPayloadReader reader,
             session ??= NewSession(camera.Id, data, receivedAtUtc, now);
             var startsLoop = ordered && !isNew && ObservationRules.StartsVideoLoop(data, session);
             if (startsLoop)
-                await CloseVisits(session, null, now, "video_loop_changed", ct);
+            {
+                await CloseVisits(session, null, now, "video_loop_changed", rollups, ct);
+                await EpisodeStore.Close(db, session.Id, "Resolved", "video_loop_changed", ct);
+            }
+            if (ordered && isNew && currentSession is not null && currentSession.EndedAtUtc is null)
+                await EpisodeStore.Close(db, currentSession.Id, "Resolved", "session_superseded", ct);
             // An omitted loop continues the last known loop under the normal position check.
             if (ordered && data.IsVideo && data.VideoLoop is null)
                 data = data with { VideoLoop = session.LastVideoLoop };
@@ -84,7 +99,8 @@ public sealed class AnalyticsIngestor(AnalyticsDb db, IMqttPayloadReader reader,
                 Sequence = data.Sequence, SourceTimeMs = data.SourceTimeMs, VideoLoop = data.VideoLoop,
                 SourceTimestampUtc = data.SourceTimestampUtc,
                 ReceivedAtUtc = receivedAtUtc, ProcessingFps = data.ProcessingFps, StaffCount = data.StaffCount,
-                AnalyticsStatus = data.Status, IsOrdered = ordered
+                AnalyticsStatus = data.Status, IsOrdered = ordered, ReportedMetadataJson = Serialize(data.ReportedMetadata),
+                MissingSequences = ordered ? (isNew ? 0 : data.Sequence - session.LastSequence - 1) : null
             };
             db.CameraSnapshots.Add(cameraSnapshot);
             var stateVersion = (current?.StateVersion ?? 0) + 1;
@@ -94,21 +110,22 @@ public sealed class AnalyticsIngestor(AnalyticsDb db, IMqttPayloadReader reader,
                 var zone = zones[observation.ExternalZoneId];
                 if (!zone.IsActive)
                     continue;
-                var zoneSnapshot = SaveZoneSnapshot(zone.Id, session.Id, message, data, observation, ordered);
+                var zoneSnapshot = SaveZoneSnapshot(zone, session.Id, message, data, observation, ordered);
                 if (ordered)
                     zoneUpdates.Add(await ApplyZone(camera.Id, zone.Id, session.Id, message, zoneSnapshot, data, observation,
-                        stateVersion, now, ct));
+                        stateVersion, now, rollups, ct));
             }
 
             if (ordered)
             {
+                rollups.Camera(camera.Id, data.SourceType, data.SourceTimestampUtc, data.SourceTimestampUtc);
                 if (!isNew && !startsLoop)
-                    await CloseCameraObservation(session, data, ct);
+                    await CloseCameraObservation(session, data, rollups, ct);
                 else if (isNew && currentSession is not null && currentSession.EndedAtUtc is null)
                 {
                     currentSession.Status = "superseded";
                     currentSession.EndedAtUtc = receivedAtUtc;
-                    await CloseVisits(currentSession, null, now, "session_superseded", ct);
+                    await CloseVisits(currentSession, null, now, "session_superseded", rollups, ct);
                 }
 
                 session.LastSequence = data.Sequence;
@@ -121,7 +138,8 @@ public sealed class AnalyticsIngestor(AnalyticsDb db, IMqttPayloadReader reader,
                 if (data.Status == "ended")
                 {
                     session.EndedAtUtc = receivedAtUtc;
-                    await CloseVisits(session, data, now, "session_ended", ct);
+                    await CloseVisits(session, data, now, "session_ended", rollups, ct);
+                    await EpisodeStore.Close(db, session.Id, "Resolved", "session_ended", ct);
                 }
 
                 var statusChanged = current is null || current.AnalyticsStatus != data.Status ||
@@ -151,8 +169,13 @@ public sealed class AnalyticsIngestor(AnalyticsDb db, IMqttPayloadReader reader,
             }
 
             await db.SaveChangesAsync(ct);
+            await rollups.Save(db, now, ct);
             await transaction.CommitAsync(ct);
             result = ordered ? IngestResult.Accepted : IngestResult.HistoricalOnly;
+            AnalyticsTelemetry.ReceiptToCommit.Record(Stopwatch.GetElapsedTime(started).TotalMilliseconds,
+                new KeyValuePair<string, object?>("outcome", result.ToString()));
+            if (ordered && data.IsLive)
+                AnalyticsTelemetry.SourceToCommit.Record((clock.GetUtcNow().UtcDateTime - data.SourceTimestampUtc).TotalMilliseconds);
         }
 
         if (notice is not null)
@@ -176,26 +199,34 @@ public sealed class AnalyticsIngestor(AnalyticsDb db, IMqttPayloadReader reader,
         return result;
     }
 
-    private ZoneSnapshot SaveZoneSnapshot(Guid zoneId, Guid sessionId, ReceivedAnalyticsMessage message, CameraObservation data,
+    private ZoneSnapshot SaveZoneSnapshot(CameraZone zone, Guid sessionId, ReceivedAnalyticsMessage message, CameraObservation data,
         ZoneObservation observation, bool ordered)
     {
         var counters = observation.Counters;
         var snapshot = new ZoneSnapshot
         {
-            CameraZoneId = zoneId, AnalyticsSessionId = sessionId, ReceivedMessageId = message.Id, Sequence = data.Sequence,
+            CameraZoneId = zone.Id, AnalyticsSessionId = sessionId, ReceivedMessageId = message.Id, Sequence = data.Sequence,
             SourceTimeMs = data.SourceTimeMs, VideoLoop = data.VideoLoop, SourceTimestampUtc = data.SourceTimestampUtc,
             ReceivedAtUtc = message.ReceivedAtUtc,
             Occupancy = observation.Occupancy, ZoneArrivals = counters.Arrivals, ZoneDepartures = counters.Departures,
+            CapacityAtObservation = ordered ? zone.Capacity : null,
+            WarningThresholdAtObservation = ordered ? zone.WarningThresholdPercent : null,
+            CriticalThresholdAtObservation = ordered ? zone.CriticalThresholdPercent : null,
             Entry = counters.Entry, Exit = counters.Exit, WrongWayIn = counters.WrongWayIn, WrongWayOut = counters.WrongWayOut,
             ReportedAverageDwellSeconds = observation.AverageDwellSeconds, ActiveVisitorsCount = observation.Visitors.Count,
-            LongestActiveDwellSeconds = observation.LongestActiveDwell, IsOrdered = ordered
+            LongestActiveDwellSeconds = observation.LongestActiveDwell, IsOrdered = ordered,
+            ReportedMetadataJson = Serialize(observation.ReportedMetadata)
         };
         db.ZoneSnapshots.Add(snapshot);
         return snapshot;
     }
 
+    private static string? Serialize(ReportedAnalyticsMetadata? metadata) =>
+        metadata is null ? null : JsonSerializer.Serialize(metadata, MetadataJson);
+
     private async Task<ZoneCurrentState> ApplyZone(Guid cameraId, Guid zoneId, Guid sessionId, ReceivedAnalyticsMessage message,
-        ZoneSnapshot snapshot, CameraObservation data, ZoneObservation observation, long stateVersion, DateTime now, CancellationToken ct)
+        ZoneSnapshot snapshot, CameraObservation data, ZoneObservation observation, long stateVersion, DateTime now,
+        IngestionRollupKeys rollups, CancellationToken ct)
     {
         var counter = await db.ZoneCounterStates.FindAsync([sessionId, zoneId], ct);
         var elapsed = counter is null ? 0 : ObservationRules.Elapsed(data, counter.LastSourceTimestampUtc,
@@ -214,21 +245,21 @@ public sealed class AnalyticsIngestor(AnalyticsDb db, IMqttPayloadReader reader,
             ZoneDeparturesDelta = delta.Departures, EntryDelta = delta.Entry, ExitDelta = delta.Exit,
             WrongWayInDelta = delta.WrongWayIn, WrongWayOutDelta = delta.WrongWayOut
         });
+        ZoneSnapshot? previous = null;
         if (counter is null)
         {
             counter = new() { AnalyticsSessionId = sessionId, CameraZoneId = zoneId };
             db.ZoneCounterStates.Add(counter);
         }
-        else if (double.IsFinite(elapsed) && await db.ZoneSnapshots.SingleOrDefaultAsync(x => x.ReceivedMessageId == counter.LastReceivedMessageId
-            && x.CameraZoneId == zoneId, ct) is { } previous)
+        else if (double.IsFinite(elapsed) && (previous = await db.ZoneSnapshots.SingleOrDefaultAsync(x =>
+            x.ReceivedMessageId == counter.LastReceivedMessageId && x.CameraZoneId == zoneId, ct)) is not null)
         {
             var seconds = Math.Min(elapsed, contiguous ? Policy.MaximumSnapshotGapSeconds : Policy.ExpectedMessageIntervalSeconds);
             if (data.IsVideo)
                 previous.ObservationEndSourceMs = previous.SourceTimeMs!.Value + (long)(seconds * 1000);
             else
                 previous.ObservationEndUtc = previous.SourceTimestampUtc.AddSeconds(seconds);
-            await AggregateQueue.Mark(db, zoneId, data.SourceType, previous.SourceTimestampUtc,
-                previous.ObservationEndUtc ?? previous.SourceTimestampUtc, now, ct);
+            rollups.Zone(zoneId, data.SourceType, previous.SourceTimestampUtc, previous.ObservationEndUtc ?? previous.SourceTimestampUtc);
         }
 
         counter.LastReceivedMessageId = message.Id;
@@ -250,7 +281,7 @@ public sealed class AnalyticsIngestor(AnalyticsDb db, IMqttPayloadReader reader,
             db.TrackedVisits.AddRange(VisitTracker.Observe(visits, observation.Visitors, cameraId, zoneId, sessionId,
                 data, now, elapsed, contiguous, Policy.TrackMissingGraceSeconds));
         }
-        await AggregateQueue.Mark(db, zoneId, data.SourceType, data.SourceTimestampUtc, data.SourceTimestampUtc, now, ct);
+        rollups.Zone(zoneId, data.SourceType, data.SourceTimestampUtc, data.SourceTimestampUtc);
 
         var current = await db.ZoneCurrentStates.FindAsync([zoneId], ct);
         if (current is null)
@@ -258,6 +289,7 @@ public sealed class AnalyticsIngestor(AnalyticsDb db, IMqttPayloadReader reader,
             current = new() { CameraZoneId = zoneId };
             db.ZoneCurrentStates.Add(current);
         }
+        EpisodeStore.Observe(db, current, previous, snapshot, data.IsVideo, contiguous, congestionOptions.Value);
         current.AnalyticsSessionId = sessionId;
         current.LastSequence = data.Sequence;
         current.StateVersion = stateVersion;
@@ -278,7 +310,8 @@ public sealed class AnalyticsIngestor(AnalyticsDb db, IMqttPayloadReader reader,
     private IQueryable<TrackedVisit> OpenVisits(Guid sessionId) => db.TrackedVisits.Where(x => x.AnalyticsSessionId == sessionId
         && (x.Status == VisitStatus.Active || x.Status == VisitStatus.TemporarilyMissing));
 
-    private async Task CloseVisits(AnalyticsSession session, CameraObservation? data, DateTime now, string reason, CancellationToken ct)
+    private async Task CloseVisits(AnalyticsSession session, CameraObservation? data, DateTime now, string reason,
+        IngestionRollupKeys rollups, CancellationToken ct)
     {
         var persisted = await OpenVisits(session.Id).ToListAsync(ct);
         var open = persisted.Concat(db.TrackedVisits.Local.Where(x => x.AnalyticsSessionId == session.Id))
@@ -286,12 +319,11 @@ public sealed class AnalyticsIngestor(AnalyticsDb db, IMqttPayloadReader reader,
         foreach (var visit in open)
         {
             VisitTracker.Resolve(visit, data, now, VisitStatus.Uncertain, reason);
-            await AggregateQueue.Mark(db, visit.CameraZoneId, session.SourceType, visit.ResolvedAtUtc!.Value,
-                visit.ResolvedAtUtc.Value, now, ct);
+            rollups.Zone(visit.CameraZoneId, session.SourceType, visit.ResolvedAtUtc!.Value, visit.ResolvedAtUtc.Value);
         }
     }
 
-    private async Task CloseCameraObservation(AnalyticsSession session, CameraObservation data, CancellationToken ct)
+    private async Task CloseCameraObservation(AnalyticsSession session, CameraObservation data, IngestionRollupKeys rollups, CancellationToken ct)
     {
         var prior = await db.CameraSnapshots.SingleOrDefaultAsync(x => x.AnalyticsSessionId == session.Id
             && x.Sequence == session.LastSequence && x.IsOrdered, ct);
@@ -306,7 +338,10 @@ public sealed class AnalyticsIngestor(AnalyticsDb db, IMqttPayloadReader reader,
         if (data.IsVideo)
             prior.ObservationEndSourceMs = prior.SourceTimeMs!.Value + (long)(seconds * 1000);
         else
+        {
             prior.ObservationEndUtc = prior.SourceTimestampUtc.AddSeconds(seconds);
+            rollups.Camera(prior.CameraId, data.SourceType, prior.SourceTimestampUtc, prior.ObservationEndUtc.Value);
+        }
     }
 
     private async Task<IngestResult> Reject(string topic, string hash, DateTime received, string reason, CancellationToken ct,

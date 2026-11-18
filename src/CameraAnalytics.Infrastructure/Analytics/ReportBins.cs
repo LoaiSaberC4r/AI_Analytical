@@ -51,7 +51,7 @@ internal sealed class ReportBins(ReportTimeline timeline, NumericWindow[] period
             bins[i].CountVisit(visit.Status, visit.LastDwellSeconds);
     }
 
-    public void Rollup(NumericWindow hour, ZoneHourlyAggregate row)
+    public void Rollup(NumericWindow hour, ZoneAggregateValues row)
     {
         Merge(Total);
         var index = Find(hour.Start);

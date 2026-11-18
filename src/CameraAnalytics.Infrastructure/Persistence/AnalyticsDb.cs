@@ -22,6 +22,16 @@ public sealed class AnalyticsDb(DbContextOptions<AnalyticsDb> options) : DbConte
     public DbSet<TrackedVisit> TrackedVisits => Set<TrackedVisit>();
     public DbSet<ZoneHourlyAggregate> ZoneHourlyAggregates => Set<ZoneHourlyAggregate>();
     public DbSet<DirtyZoneHour> DirtyZoneHours => Set<DirtyZoneHour>();
+    public DbSet<ZoneMinuteAggregate> ZoneMinuteAggregates => Set<ZoneMinuteAggregate>();
+    public DbSet<CameraMinuteAggregate> CameraMinuteAggregates => Set<CameraMinuteAggregate>();
+    public DbSet<DirtyZoneMinute> DirtyZoneMinutes => Set<DirtyZoneMinute>();
+    public DbSet<DirtyCameraMinute> DirtyCameraMinutes => Set<DirtyCameraMinute>();
+    public DbSet<MinuteBackfillState> MinuteBackfills => Set<MinuteBackfillState>();
+    public DbSet<SiteFloor> SiteFloors => Set<SiteFloor>();
+    public DbSet<ZoneSpatialLayout> ZoneSpatialLayouts => Set<ZoneSpatialLayout>();
+    public DbSet<AlertRule> AlertRules => Set<AlertRule>();
+    public DbSet<AnalyticsAlert> AnalyticsAlerts => Set<AnalyticsAlert>();
+    public DbSet<CongestionEpisode> CongestionEpisodes => Set<CongestionEpisode>();
 
     protected override void ConfigureConventions(ModelConfigurationBuilder builder) =>
         builder.Properties<DateTime>().HaveConversion<UtcDateTimeConverter>();
@@ -32,6 +42,42 @@ public sealed class AnalyticsDb(DbContextOptions<AnalyticsDb> options) : DbConte
         ConfigureCatalog<Site>(model);
         ConfigureCatalog<Camera>(model);
         ConfigureCatalog<CameraZone>(model);
+        ConfigureCatalog<SiteFloor>(model);
+        ConfigureCatalog<AlertRule>(model);
+        model.Entity<AlertRule>(e =>
+        {
+            e.Property(x => x.Kind).HasMaxLength(32);
+            e.Property(x => x.Severity).HasMaxLength(16);
+            e.HasOne<Site>().WithMany().HasForeignKey(x => x.SiteId);
+            e.HasOne<Camera>().WithMany().HasForeignKey(x => x.CameraId);
+            e.HasOne<CameraZone>().WithMany().HasForeignKey(x => x.CameraZoneId);
+            e.HasIndex(x => new { x.SiteId, x.IsActive });
+        });
+        model.Entity<AnalyticsAlert>(e =>
+        {
+            e.HasOne<AlertRule>().WithMany().HasForeignKey(x => x.AlertRuleId);
+            e.HasIndex(x => x.AlertRuleId).IsUnique().HasFilter("[ResolvedAtUtc] IS NULL");
+            e.HasIndex(x => new { x.SiteId, x.OpenedAtUtc });
+            e.HasIndex(x => x.ResolvedAtUtc);
+            e.Property(x => x.Kind).HasMaxLength(32);
+            e.Property(x => x.Severity).HasMaxLength(16);
+            e.Property(x => x.AcknowledgedBy).HasMaxLength(256);
+            e.Property(x => x.ResolvedBy).HasMaxLength(256);
+            e.Property(x => x.ResolutionReason).HasMaxLength(64);
+        });
+        model.Entity<SiteFloor>(e =>
+        {
+            e.HasIndex(x => new { x.SiteId, x.DisplayOrder });
+            e.HasOne<Site>().WithMany().HasForeignKey(x => x.SiteId);
+        });
+        model.Entity<ZoneSpatialLayout>(e =>
+        {
+            e.HasKey(x => new { x.SiteFloorId, x.CameraZoneId });
+            e.HasOne<SiteFloor>().WithMany().HasForeignKey(x => x.SiteFloorId);
+            e.HasOne(x => x.Zone).WithMany().HasForeignKey(x => x.CameraZoneId);
+            e.Property(x => x.RowVersion).IsRowVersion();
+            e.ToTable(t => t.HasCheckConstraint("CK_ZoneSpatialLayouts_Geometry", "ISJSON([VerticesJson], ARRAY) = 1"));
+        });
         model.Entity<Site>(e =>
         {
             e.Property(x => x.Code).HasMaxLength(64);
@@ -80,13 +126,16 @@ public sealed class AnalyticsDb(DbContextOptions<AnalyticsDb> options) : DbConte
             e.Property(x => x.PayloadHash).HasMaxLength(64).IsFixedLength().IsUnicode(false);
             e.Property(x => x.Reason).HasMaxLength(128);
             e.HasIndex(x => x.ReceivedAtUtc);
+            e.HasIndex(x => new { x.Topic, x.ReceivedAtUtc });
         });
         model.Entity<CameraSnapshot>(e =>
         {
             e.Property(x => x.AnalyticsStatus).HasMaxLength(32);
+            e.Property(x => x.ReportedMetadataJson).HasMaxLength(1024);
             e.HasIndex(x => x.ReceivedMessageId).IsUnique();
             e.HasIndex(x => new { x.CameraId, x.ReceivedAtUtc });
             e.HasIndex(x => new { x.CameraId, x.SourceTimestampUtc });
+            e.HasIndex(x => x.SourceTimestampUtc).HasFilter("[IsOrdered] = 1");
             e.HasIndex(x => new { x.AnalyticsSessionId, x.Sequence });
             e.HasIndex(x => new { x.AnalyticsSessionId, x.VideoLoop, x.SourceTimeMs, x.Sequence });
             e.HasOne(x => x.Session).WithMany().HasForeignKey(x => x.AnalyticsSessionId);
@@ -95,9 +144,12 @@ public sealed class AnalyticsDb(DbContextOptions<AnalyticsDb> options) : DbConte
         });
         model.Entity<ZoneSnapshot>(e =>
         {
+            e.Property(x => x.ReportedMetadataJson).HasMaxLength(1024);
+            e.ToTable(t => t.HasCheckConstraint("CK_ZoneSnapshots_Capacity", "[CapacityAtObservation] IS NULL OR [CapacityAtObservation] > 0"));
             e.HasIndex(x => new { x.ReceivedMessageId, x.CameraZoneId }).IsUnique();
             e.HasIndex(x => new { x.CameraZoneId, x.ReceivedAtUtc });
             e.HasIndex(x => new { x.CameraZoneId, x.SourceTimestampUtc });
+            e.HasIndex(x => x.SourceTimestampUtc).HasFilter("[IsOrdered] = 1");
             e.HasIndex(x => new { x.AnalyticsSessionId, x.CameraZoneId, x.VideoLoop, x.SourceTimeMs, x.Sequence });
             e.HasOne(x => x.Session).WithMany().HasForeignKey(x => x.AnalyticsSessionId);
             e.HasOne<CameraZone>().WithMany().HasForeignKey(x => x.CameraZoneId);
@@ -114,8 +166,19 @@ public sealed class AnalyticsDb(DbContextOptions<AnalyticsDb> options) : DbConte
         model.Entity<ZoneCurrentState>(e =>
         {
             e.HasKey(x => x.CameraZoneId);
+            e.Property(x => x.CongestionProgressJson).HasMaxLength(1536);
             e.HasOne<CameraZone>().WithMany().HasForeignKey(x => x.CameraZoneId);
             e.HasOne<AnalyticsSession>().WithMany().HasForeignKey(x => x.AnalyticsSessionId);
+        });
+        model.Entity<CongestionEpisode>(e =>
+        {
+            e.HasOne(x => x.Zone).WithMany().HasForeignKey(x => x.CameraZoneId);
+            e.HasOne(x => x.Session).WithMany().HasForeignKey(x => x.AnalyticsSessionId);
+            e.HasIndex(x => new { x.CameraZoneId, x.StartedAtUtc });
+            e.HasIndex(x => new { x.AnalyticsSessionId, x.VideoLoop, x.StartSourceTimeMs });
+            e.HasIndex(x => x.EndedAtUtc);
+            e.Property(x => x.Status).HasMaxLength(16);
+            e.Property(x => x.ResolutionReason).HasMaxLength(48);
         });
         model.Entity<ZoneCounterState>(e =>
         {
@@ -144,6 +207,7 @@ public sealed class AnalyticsDb(DbContextOptions<AnalyticsDb> options) : DbConte
         });
         model.Entity<ZoneHourlyAggregate>(e =>
         {
+            e.HasBaseType((Type?)null);
             e.Property(x => x.SourceType).HasMaxLength(32);
             e.Property(x => x.DataQuality).HasMaxLength(32);
             e.Property(x => x.ArrivalsDelta).HasPrecision(38, 0);
@@ -156,6 +220,40 @@ public sealed class AnalyticsDb(DbContextOptions<AnalyticsDb> options) : DbConte
             e.HasIndex(x => x.HourStartUtc);
             e.HasOne<CameraZone>().WithMany().HasForeignKey(x => x.CameraZoneId);
         });
+        model.Entity<ZoneMinuteAggregate>(e =>
+        {
+            e.HasBaseType((Type?)null);
+            e.HasKey(x => new { x.CameraZoneId, x.MinuteStartUtc });
+            e.HasIndex(x => x.MinuteStartUtc);
+            e.HasOne<CameraZone>().WithMany().HasForeignKey(x => x.CameraZoneId);
+            e.Property(x => x.DataQuality).HasMaxLength(32);
+            e.Property(x => x.ArrivalsDelta).HasPrecision(38, 0);
+            e.Property(x => x.DeparturesDelta).HasPrecision(38, 0);
+            e.Property(x => x.EntryDelta).HasPrecision(38, 0);
+            e.Property(x => x.ExitDelta).HasPrecision(38, 0);
+            e.Property(x => x.WrongWayInDelta).HasPrecision(38, 0);
+            e.Property(x => x.WrongWayOutDelta).HasPrecision(38, 0);
+        });
+        model.Entity<CameraMinuteAggregate>(e =>
+        {
+            e.HasKey(x => new { x.CameraId, x.MinuteStartUtc });
+            e.HasIndex(x => x.MinuteStartUtc);
+            e.HasOne<Camera>().WithMany().HasForeignKey(x => x.CameraId);
+            e.Property(x => x.MissingSequences).HasPrecision(38, 0);
+        });
+        model.Entity<DirtyZoneMinute>(e =>
+        {
+            e.HasKey(x => new { x.CameraZoneId, x.MinuteStartUtc });
+            e.HasIndex(x => new { x.MinuteStartUtc, x.DirtyAtUtc });
+            e.HasOne<CameraZone>().WithMany().HasForeignKey(x => x.CameraZoneId);
+        });
+        model.Entity<DirtyCameraMinute>(e =>
+        {
+            e.HasKey(x => new { x.CameraId, x.MinuteStartUtc });
+            e.HasIndex(x => new { x.MinuteStartUtc, x.DirtyAtUtc });
+            e.HasOne<Camera>().WithMany().HasForeignKey(x => x.CameraId);
+        });
+        model.Entity<MinuteBackfillState>().Property(x => x.Id).ValueGeneratedNever();
         model.Entity<DirtyZoneHour>(e =>
         {
             e.Property(x => x.SourceType).HasMaxLength(32);

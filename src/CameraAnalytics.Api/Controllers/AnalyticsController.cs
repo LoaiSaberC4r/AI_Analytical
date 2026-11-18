@@ -11,6 +11,7 @@ namespace CameraAnalytics.Api.Controllers;
 [Route("api/v1/analytics")]
 [ProducesResponseType<ProblemDetails>(400)]
 [ProducesResponseType<ProblemDetails>(404)]
+[Microsoft.AspNetCore.Authorization.Authorize(Policy = Extensions.SiteAccess.Administration)]
 public sealed class AnalyticsController(IReportQueries reports, IOptions<AnalyticsOptions> options) : ControllerBase
 {
     private double MinimumCoverage => options.Value.MinimumCoveragePercentForPeakRanking;

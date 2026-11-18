@@ -46,7 +46,8 @@ public sealed class ReportQueries(AnalyticsDb db, IOptions<AnalyticsOptions> set
         return new(timeline.Period, rows);
     }
 
-    private async Task ReadZone(ReportTimeline timeline, ReportBins bins, Guid zoneId, Guid? sessionId, CancellationToken ct)
+    internal async Task ReadZone(ReportTimeline timeline, ReportBins bins, Guid zoneId, Guid? sessionId, CancellationToken ct,
+        bool useMinutes = false)
     {
         var window = timeline.Window;
         if (window.End == window.Start)
@@ -54,6 +55,28 @@ public sealed class ReportQueries(AnalyticsDb db, IOptions<AnalyticsOptions> set
         if (timeline.IsVideo || sessionId.HasValue)
         {
             await Data.Zone(timeline, window, zoneId, sessionId, bins, ct);
+            return;
+        }
+        if (useMinutes && timeline.Period.Interval == "minute")
+        {
+            var minutes = await db.ZoneMinuteAggregates.AsNoTracking().Where(x => x.CameraZoneId == zoneId
+                    && x.MinuteStartUtc >= timeline.Period.From && x.MinuteStartUtc <= timeline.Period.To!.Value.AddMinutes(-1)
+                    && !db.DirtyZoneMinutes.Any(d => d.CameraZoneId == zoneId && d.MinuteStartUtc == x.MinuteStartUtc))
+                .OrderBy(x => x.MinuteStartUtc).ToListAsync(ct);
+            var next = window.Start;
+            foreach (var minute in minutes)
+            {
+                var begin = ReportTimeline.Ms(minute.MinuteStartUtc);
+                var span = new NumericWindow(begin, begin + 60_000);
+                if (!bins.CanUseHour(span))
+                    continue;
+                if (next < begin)
+                    await Data.Zone(timeline, new(next, begin), zoneId, sessionId, bins, ct);
+                bins.Rollup(span, minute);
+                next = span.End;
+            }
+            if (next < window.End)
+                await Data.Zone(timeline, new(next, window.End), zoneId, sessionId, bins, ct);
             return;
         }
         var start = ReportTimeline.Utc(window.Start);
@@ -142,12 +165,12 @@ public sealed class ReportQueries(AnalyticsDb db, IOptions<AnalyticsOptions> set
     private IQueryable<Camera> Cameras(ReportFilter filter) => db.Cameras.AsNoTracking()
         .Where(x => (!filter.SiteId.HasValue || x.SiteId == filter.SiteId) && (!filter.CameraId.HasValue || x.Id == filter.CameraId));
 
-    private sealed record ReportScope(ReportFilter Filter, ReportTimeline Timeline, SessionData? Session, int Untimed);
+    internal sealed record ReportScope(ReportFilter Filter, ReportTimeline Timeline, SessionData? Session, int Untimed);
 
     private IQueryable<CameraSnapshot> OrderedSnapshots(Guid sessionId) =>
         db.CameraSnapshots.AsNoTracking().Where(x => x.AnalyticsSessionId == sessionId && x.IsOrdered);
 
-    private async Task<ReportScope> Resolve(ReportFilter filter, CancellationToken ct)
+    internal async Task<ReportScope> Resolve(ReportFilter filter, CancellationToken ct)
     {
         var session = filter.SessionId.HasValue ? await Session(filter.SessionId.Value, ct) : null;
         if (session is not null)

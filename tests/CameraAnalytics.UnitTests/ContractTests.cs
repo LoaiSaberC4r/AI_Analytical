@@ -1,7 +1,9 @@
 using System.Text;
 using System.Text.Json.Nodes;
 using CameraAnalytics.Api.Extensions;
+using CameraAnalytics.Application.Common;
 using CameraAnalytics.Domain.ValueObjects;
+using Microsoft.Extensions.Options;
 
 namespace CameraAnalytics.UnitTests;
 
@@ -132,6 +134,63 @@ public sealed class ContractTests
         var bytes = Encoding.UTF8.GetBytes(Encoding.UTF8.GetString(Sample).Replace("\"processing_fps\": 8", "\"processing_fps\": 1e400"));
         Assert.Equal("invalid_camera_values", reader.Read(Topic, bytes).Rejection);
     }
+
+    [Fact]
+    public void Optional_metadata_keeps_signed_zero_and_absent_values_separate()
+    {
+        Assert.Null(reader.Read(Topic, Sample).Observation!.ReportedMetadata);
+        var json = Parse();
+        json["actual_gate_in"] = 0;
+        json["gate_balance_delta"] = -4;
+        json["totals"] = new JsonObject { ["actual_gate_in"] = 8 };
+        json["zones"]![0]!["zone_balance_delta"] = -2;
+        var data = reader.Read(Topic, Encoding.UTF8.GetBytes(json.ToJsonString())).Observation!;
+        Assert.Equal(0, data.ReportedMetadata!.Counts!.ActualGateIn);
+        Assert.Null(data.ReportedMetadata.Counts.ActualGateOut);
+        Assert.Equal(-4, data.ReportedMetadata.Counts.GateBalanceDelta);
+        Assert.Equal(8, data.ReportedMetadata.Totals!.ActualGateIn);
+        Assert.Equal(-2, data.Zones[0].ReportedMetadata!.Counts!.ZoneBalanceDelta);
+        Assert.Null(data.Zones[1].ReportedMetadata);
+    }
+
+    [Theory]
+    [InlineData("-1", "invalid_camera_metadata")]
+    [InlineData("1.25", "invalid_json_contract")]
+    [InlineData("\"1\"", "invalid_json_contract")]
+    [InlineData("9223372036854775808", "invalid_json_contract")]
+    public void Rejects_invalid_optional_count(string value, string reason)
+    {
+        var json = Parse();
+        json["normal_in"] = JsonNode.Parse(value);
+        Assert.Equal(reason, Read(json));
+    }
+
+    [Fact]
+    public void Rejects_duplicate_metadata_and_tracks()
+    {
+        var json = Parse().ToJsonString().Insert(1, "\"normal_in\":1,\"normal_in\":2,");
+        Assert.Equal("invalid_json_contract", reader.Read(Topic, Encoding.UTF8.GetBytes(json)).Rejection);
+        var payload = Parse();
+        var visitors = payload["zones"]![2]!["active_visitors"]!.AsArray();
+        visitors.Add(visitors[0]!.DeepClone());
+        Assert.Equal("invalid_or_duplicate_track", Read(payload));
+    }
+
+    [Fact]
+    public void Applies_configured_limits()
+    {
+        Assert.Equal("payload_too_large", ReadWith(new() { MaxPayloadBytes = Sample.Length - 1 }));
+        Assert.Equal("source_name_too_long", ReadWith(new() { MaxSourceNameLength = 1 }));
+        Assert.Equal("too_many_zones", ReadWith(new() { MaxZonesPerMessage = 1 }));
+        var json = Parse();
+        var visitors = json["zones"]![2]!["active_visitors"]!.AsArray();
+        visitors.Add(visitors[0]!.DeepClone());
+        Assert.Equal("too_many_active_visitors", ReadWith(new() { MaxActiveVisitorsPerZone = 1 },
+            Encoding.UTF8.GetBytes(json.ToJsonString())));
+    }
+
+    private static string? ReadWith(MqttOptions limits, byte[]? payload = null) =>
+        new MqttPayloadReader(Options.Create(limits)).Read(Topic, payload ?? Sample).Rejection;
 
     private static JsonObject Parse() => JsonNode.Parse(Sample)!.AsObject();
     private string? Read(JsonObject json) => reader.Read(Topic, Encoding.UTF8.GetBytes(json.ToJsonString())).Rejection;

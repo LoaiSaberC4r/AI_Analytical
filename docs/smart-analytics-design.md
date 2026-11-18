@@ -1,0 +1,11 @@
+# Smart analytics backend
+
+The ASP.NET Core API stays in the existing modular monolith. Contracts define the additive schema 2.0 wire adapter and SignalR events. Application owns metric formulas, interval and quality rules, polygon validation, comparisons and forecasting. Infrastructure handles persisted observations, row versions, queries, queues and workers. API controllers authorize and scope requests and publish typed responses.
+
+An accepted ordered delivery commits the receipt, session, snapshots, positive counter changes, visit state, congestion progress and dirty rollup keys in one SQL transaction. Duplicate bytes reuse the existing durable outcome. A conflicting hash or invalid input yields bounded rejection metadata. Historical-only samples persist as evidence and stay outside ordered metrics. Automatic alert evaluation takes the SQL writer lock independently. SignalR messages follow commit, and transient failures are reconciled through REST or broker redelivery as applicable.
+
+Smart analytics preserves half-open live and video ranges and does not pool video loops. Utilization uses capacity and thresholds written with the observation. Weighted values use represented seconds. Null values, provenance and coverage are contract fields. Per-zone observations can overlap. Public analytics expose no active track identifiers. Floor heatmaps project measurements on configured geometry. Forecasts use qualified persisted hourly rollups, and insights use numeric evidence from the same report contracts.
+
+Closed congestion episodes persist when ordered sample intervals establish minimum duration and yield recovery, a configuration change, a source boundary or explicit uncertainty. The current zone state contains continuous progress across process restarts. The report computes interval-clipped views, and the history endpoint returns persisted full episodes. Old observations without known capacity stay unavailable for new utilization metrics.
+
+Telemetry uses `CameraAnalytics` metrics for MQTT connection, accepted and failure outcomes, transaction/ACK timing, dirty queue depth, minute lag, alert transitions and SignalR summary notices. ASP.NET Core supplies HTTP request-duration metrics. Metric dimensions use bounded status categories.
