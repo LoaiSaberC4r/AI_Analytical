@@ -1,6 +1,6 @@
 # API contract
 
-The 37 Core operations are listed in Swagger at `/swagger/v1/swagger.json`. The base route is `/api/v1`. HTTP uses camelCase JSON and GUID identifiers. External IDs are case-sensitive strings within their registry namespace.
+Swagger lists the 37 original operations and the smart analytics additions at `/swagger/v1/swagger.json`. The base route is `/api/v1`. HTTP uses camelCase JSON and GUID identifiers. External IDs are case-sensitive strings within their registry namespace.
 
 | Resource | Method and path relative to the base |
 | --- | --- |
@@ -30,7 +30,7 @@ POST returns 201 with the new record and Location. PUT returns the updated recor
 
 ## SignalR
 
-Default hub `/hubs/analytics`. Call `SubscribeToSite(siteId)` or `SubscribeToCamera(cameraId)` and use the corresponding unsubscribe methods to leave. Successful subscriptions join `site:{guid}` or `camera:{guid}`. IDs are validated against the registry.
+Default hub `/hubs/analytics`. Call `SubscribeToSite(siteId)` or `SubscribeToCamera(cameraId)` and use the corresponding unsubscribe methods to leave. Groups route updates by site and camera. ID validation and site access checks apply before joining.
 
 | Event | Fields |
 | --- | --- |
@@ -38,5 +38,24 @@ Default hub `/hubs/analytics`. Call `SubscribeToSite(siteId)` or `SubscribeToCam
 | `ZoneMetricsUpdated` | cameraId, zoneId, sessionId, sequence, stateVersion, occupancy, arrivals, departures, entry, exit, wrongWayIn, wrongWayOut, reportedAverageDwellSeconds, activeVisitorsCount, longestActiveDwellSeconds, receivedAtUtc |
 | `CameraStatusChanged` | cameraId, siteId, sessionId, stateVersion, analyticsStatus, dataFreshness, receivedAtUtc |
 | `AnalyticsSummaryUpdated` | cameraId, siteId, sessionId, stateVersion, receivedAtUtc |
+| `AnalyticsAlertChanged` | alertId, siteId, cameraId, stateVersion, status |
 
 Updates are sent to matching groups after SQL commit. The summary event is a refresh signal. Use REST after reconnect, and apply camera and zone version checks before replacing displayed values.
+
+## Smart analytics and operations
+
+| View | Method and path relative to `/api/v1` |
+| --- | --- |
+| Analytics | GET `/analytics/traffic/flow-rate`, `/analytics/congestion`, `/analytics/congestion/history`, `/analytics/dwell/distribution`, `/analytics/dwell/long-stay`, `/analytics/quality` |
+| Visualizations | GET `/analytics/visualizations/{metricKey}`, `/analytics/heatmap` |
+| Insights and history | GET `/analytics/insights`, `/analytics/comparisons`, `/analytics/forecast` |
+| Alerts | GET `/alerts`, `/alerts/{id}` · POST `/alerts/{id}/acknowledge`, `/alerts/{id}/resolve` |
+| Rules | GET and POST `/alert-rules` · GET and PUT `/alert-rules/{id}` · PATCH `/alert-rules/{id}/status` |
+| Floors | GET and POST `/sites/{siteId}/floors` · GET and PUT `/floors/{id}` · PATCH `/floors/{id}/status` |
+| Layouts | GET `/floors/{id}/layouts` · PUT and DELETE `/floors/{id}/zones/{zoneId}/layout` |
+
+The smart reports reuse catalog filters. Select a site, camera, zone or session. Authenticated site-scoped reads supply `siteId` and may narrow to resources in that site. Video reports require `sessionId`, `videoLoop`, `fromSourceTimeMs` and `toSourceTimeMs`. Use `videoLoop=unmarked` for legacy untagged loops. [Visualization contract](visualization-contract.md) · [Floor layouts](floor-layouts.md)
+
+Alert and rule lists require `siteId`. Alerts also support `cameraId`, `status` and paging. Rule and layout edits require the latest `rowVersion`. Layout DELETE takes `rowVersion` as a query parameter. See the lifecycle policy and required scopes. [Alerts and insights](alerts-and-insights.md) · [Security and deployment](security-and-deployment.md)
+
+The closed congestion history route pages full durable episodes overlapping the requested range. The existing smart congestion route clips measured intervals to the report and can include an episode still in progress. Comparisons accept `metricKey` and `alignment`. Forecast requires `zoneId` and evaluates live occupancy only. [Comparisons and forecast](forecasting.md)

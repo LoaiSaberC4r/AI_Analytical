@@ -4,6 +4,7 @@
     <ProjectReference Include="../CameraAnalytics.Infrastructure/CameraAnalytics.Infrastructure.csproj" />
     <ProjectReference Include="../CameraAnalytics.Contracts/CameraAnalytics.Contracts.csproj" />
     <PackageReference Include="Swashbuckle.AspNetCore" Version="10.1.7" />
+    <PackageReference Include="Microsoft.AspNetCore.Authentication.JwtBearer" Version="10.0.13" />
     <PackageReference Include="Microsoft.OpenApi" Version="2.7.5" />
   </ItemGroup>
   <PropertyGroup>

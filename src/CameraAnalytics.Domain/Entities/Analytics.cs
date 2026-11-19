@@ -60,8 +60,10 @@ public sealed class CameraSnapshot
     public DateTime SourceTimestampUtc { get; set; }
     public DateTime ReceivedAtUtc { get; set; }
     public double ProcessingFps { get; set; }
+    public long? MissingSequences { get; set; }
     public int StaffCount { get; set; }
     public string AnalyticsStatus { get; set; } = "";
+    public string? ReportedMetadataJson { get; set; }
     public bool IsOrdered { get; set; }
     public DateTime? ObservationEndUtc { get; set; }
     public long? ObservationEndSourceMs { get; set; }
@@ -80,6 +82,9 @@ public sealed class ZoneSnapshot
     public DateTime SourceTimestampUtc { get; set; }
     public DateTime ReceivedAtUtc { get; set; }
     public int Occupancy { get; set; }
+    public int? CapacityAtObservation { get; set; }
+    public double? WarningThresholdAtObservation { get; set; }
+    public double? CriticalThresholdAtObservation { get; set; }
     public long ZoneArrivals { get; set; }
     public long ZoneDepartures { get; set; }
     public long Entry { get; set; }
@@ -89,6 +94,7 @@ public sealed class ZoneSnapshot
     public double ReportedAverageDwellSeconds { get; set; }
     public int ActiveVisitorsCount { get; set; }
     public double? LongestActiveDwellSeconds { get; set; }
+    public string? ReportedMetadataJson { get; set; }
     public bool IsOrdered { get; set; }
     public DateTime? ObservationEndUtc { get; set; }
     public long? ObservationEndSourceMs { get; set; }
@@ -128,6 +134,7 @@ public sealed class ZoneCurrentState
     public int ActiveVisitorsCount { get; set; }
     public double? LongestActiveDwellSeconds { get; set; }
     public DateTime LastUpdatedAtUtc { get; set; }
+    public string? CongestionProgressJson { get; set; }
 }
 
 public sealed class ZoneCounterState
@@ -194,12 +201,16 @@ public sealed class TrackedVisit
     public DateTime UpdatedAtUtc { get; set; }
 }
 
-public sealed class ZoneHourlyAggregate
+public sealed class ZoneHourlyAggregate : ZoneAggregateValues
 {
     public Guid Id { get; set; } = Guid.CreateVersion7();
     public Guid CameraZoneId { get; set; }
     public string SourceType { get; set; } = "";
     public DateTime HourStartUtc { get; set; }
+}
+
+public abstract class ZoneAggregateValues
+{
     public double ObservationDurationSeconds { get; set; }
     public double? AverageOccupancy { get; set; }
     public int? PeakOccupancy { get; set; }

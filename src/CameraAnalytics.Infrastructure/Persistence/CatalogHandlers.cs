@@ -89,6 +89,9 @@ public sealed class CatalogCommands(AnalyticsDb db, TimeProvider clock, IOptions
         if (id.HasValue && (camera.ExternalCameraId != externalId || camera.SiteId != request.SiteId)
             && await db.AnalyticsSessions.AnyAsync(x => x.CameraId == camera.Id, ct))
             throw ApiError.Conflict("The external ID and site are stable after ingestion begins.");
+        if (id.HasValue && camera.SiteId != request.SiteId && (await db.ZoneSpatialLayouts.AnyAsync(x => x.Zone.CameraId == camera.Id, ct)
+                || await db.AlertRules.AnyAsync(x => x.CameraId == camera.Id, ct)))
+            throw ApiError.Conflict("A camera with existing floor layouts or alert rules must remain in its site.");
         camera.Name = name;
         camera.Description = Input.Description(request.Description);
         camera.SiteId = request.SiteId;

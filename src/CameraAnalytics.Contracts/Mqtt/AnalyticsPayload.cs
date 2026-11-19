@@ -1,7 +1,7 @@
 namespace CameraAnalytics.Contracts.Mqtt;
 
 // The MQTT reader enforces presence through required members, including nullable source time.
-public sealed class CameraAnalyticsPayload
+public sealed class CameraAnalyticsPayload : OptionalAnalyticsFields
 {
     public required string SchemaVersion { get; init; }
     public required string CameraId { get; init; }
@@ -18,7 +18,7 @@ public sealed class CameraAnalyticsPayload
     public required DateTimeOffset Timestamp { get; init; }
 }
 
-public sealed class ZoneAnalyticsPayload
+public sealed class ZoneAnalyticsPayload : OptionalAnalyticsFields
 {
     public required string ZoneId { get; init; }
     public required int Occupancy { get; init; }
@@ -36,4 +36,22 @@ public sealed class ActiveVisitorPayload
 {
     public required long TrackId { get; init; }
     public required double DwellSeconds { get; init; }
+}
+
+public abstract class OptionalAnalyticsFields : ReportedCountFields
+{
+    public ReportedCountFields? Totals { get; init; }
+}
+
+public class ReportedCountFields
+{
+    public long? NormalIn { get; init; }
+    public long? NormalOut { get; init; }
+    public long? ActualGateIn { get; init; }
+    public long? ActualGateOut { get; init; }
+    public long? GateBalanceDelta { get; init; }
+    public long? UnverifiedLosses { get; init; }
+    public long? LoopBoundaryClosures { get; init; }
+    public long? ExclusionRemovals { get; init; }
+    public long? ZoneBalanceDelta { get; init; }
 }

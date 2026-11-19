@@ -1,5 +1,7 @@
 namespace CameraAnalytics.Contracts.Realtime;
 
+public sealed record AnalyticsAlertChanged(Guid AlertId, Guid SiteId, Guid CameraId, long StateVersion, string Status);
+
 public sealed record CameraSnapshotUpdated(Guid CameraId, Guid SiteId, Guid SessionId, long Sequence,
     long StateVersion, string SourceType, string AnalyticsStatus, string DataFreshness, double ProcessingFps, int StaffCount,
     DateTime ReceivedAtUtc);

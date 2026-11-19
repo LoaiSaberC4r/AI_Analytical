@@ -14,6 +14,7 @@ namespace CameraAnalytics.Infrastructure.BackgroundJobs;
 
 public sealed class AggregationWorker(IServiceScopeFactory scopes, TimeProvider clock,
     IOptions<AggregationOptions> aggregation, IOptions<AnalyticsOptions> analytics, IOptions<RetentionOptions> retention,
+    IOptions<MinuteAggregationOptions> minute,
     ILogger<AggregationWorker> logger) : BackgroundService
 {
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
@@ -30,6 +31,13 @@ public sealed class AggregationWorker(IServiceScopeFactory scopes, TimeProvider 
                     await using var scope = scopes.CreateAsyncScope();
                     if (!await RefreshOne(scope.ServiceProvider.GetRequiredService<AnalyticsDb>(), stoppingToken))
                         break;
+                }
+
+                if (AnalyticsTelemetry.DirtyHours.Enabled)
+                {
+                    await using var scope = scopes.CreateAsyncScope();
+                    var db = scope.ServiceProvider.GetRequiredService<AnalyticsDb>();
+                    AnalyticsTelemetry.DirtyHours.Record(await db.DirtyZoneHours.CountAsync(stoppingToken));
                 }
 
                 if (retention.Value.Enabled)
@@ -69,29 +77,7 @@ public sealed class AggregationWorker(IServiceScopeFactory scopes, TimeProvider 
             aggregate = new ZoneHourlyAggregate { CameraZoneId = job.CameraZoneId, SourceType = job.SourceType, HourStartUtc = job.HourStartUtc };
             db.ZoneHourlyAggregates.Add(aggregate);
         }
-        aggregate.ObservationDurationSeconds = stats.Duration;
-        aggregate.AverageOccupancy = stats.Average;
-        aggregate.PeakOccupancy = stats.Peak;
-        aggregate.PeakAtUtc = timeline.Time(stats.PeakAt);
-        aggregate.ArrivalsDelta = stats.Traffic.Arrivals;
-        aggregate.DeparturesDelta = stats.Traffic.Departures;
-        aggregate.EntryDelta = stats.Traffic.Entries;
-        aggregate.ExitDelta = stats.Traffic.Exits;
-        aggregate.WrongWayInDelta = stats.Traffic.WrongWayIn;
-        aggregate.WrongWayOutDelta = stats.Traffic.WrongWayOut;
-        aggregate.LatestReportedDwellSeconds = stats.LatestReportedDwell;
-        aggregate.LatestReportedAtUtc = timeline.Time(stats.LatestReportedAt);
-        aggregate.LongestActiveDwellSeconds = stats.LongestActiveDwell;
-        aggregate.CounterBaselineCount = stats.Baselines;
-        aggregate.CounterResetCount = stats.Resets;
-        aggregate.GapCount = stats.Gaps;
-        aggregate.SampleCount = stats.Samples;
-        aggregate.UncertainVisits = stats.UncertainVisits;
-        aggregate.EstimatedCompletedVisits = stats.EstimatedVisits;
-        aggregate.EstimatedTotalDwellSeconds = double.IsFinite(stats.EstimatedTotalDwell) ? stats.EstimatedTotalDwell : null;
-        aggregate.CoveragePercent = stats.Coverage(3600);
-        aggregate.DataQuality = stats.Quality(3600).Kind;
-        aggregate.UpdatedAtUtc = now;
+        AggregateQueue.Fill(aggregate, stats, 3600, now);
         db.DirtyZoneHours.Remove(job);
         await db.SaveChangesAsync(ct);
         await transaction.CommitAsync(ct);
@@ -105,10 +91,14 @@ public sealed class AggregationWorker(IServiceScopeFactory scopes, TimeProvider 
             .AddSeconds(-analytics.Value.MaximumSnapshotGapSeconds);
         var rejectionBefore = now.AddDays(-retention.Value.ProcessedMessagesDays);
         var aggregateBefore = AggregateQueue.FloorHour(now.AddDays(-retention.Value.HourlyAggregatesDays));
+        var episodeBefore = now.AddDays(-retention.Value.AlertHistoryDays);
 
         await using var transaction = await WriteTransaction.Begin(db, ct);
         // Keep live evidence until its session is closed and every affected hour has a finalized rollup.
-        if (!await db.DirtyZoneHours.AnyAsync(x => x.HourStartUtc <= rawBefore, ct))
+        if (!await db.DirtyZoneHours.AnyAsync(x => x.HourStartUtc <= rawBefore, ct)
+            && !await db.DirtyZoneMinutes.AnyAsync(x => x.MinuteStartUtc <= rawBefore, ct)
+            && (!minute.Value.Enabled || minute.Value.BackfillDays == 0
+                || await db.MinuteBackfills.AnyAsync(x => x.NextMinuteUtc >= x.EndUtc, ct)))
         {
             var oldZones = db.ZoneSnapshots.Where(x => x.SourceTimestampUtc < rawBefore && x.Session.SourceType == "live"
                 && x.Session.EndedAtUtc < rawBefore).OrderBy(x => x.SourceTimestampUtc).Take(5000).Select(x => x.Id);
@@ -116,7 +106,8 @@ public sealed class AggregationWorker(IServiceScopeFactory scopes, TimeProvider 
             // Camera snapshots support the staff report, so they share the aggregate retention horizon.
             var oldCameras = db.CameraSnapshots.Where(x => x.SourceTimestampUtc < aggregateBefore && x.Session.SourceType == "live"
                 && x.Session.EndedAtUtc < aggregateBefore).OrderBy(x => x.SourceTimestampUtc).Take(5000).Select(x => x.Id);
-            await db.CameraSnapshots.Where(x => oldCameras.Contains(x.Id)).ExecuteDeleteAsync(ct);
+            if (!await db.DirtyCameraMinutes.AnyAsync(x => x.MinuteStartUtc <= aggregateBefore, ct))
+                await db.CameraSnapshots.Where(x => oldCameras.Contains(x.Id)).ExecuteDeleteAsync(ct);
         }
 
         var oldErrors = db.IngestionRejections.Where(x => x.ReceivedAtUtc < rejectionBefore)
@@ -125,6 +116,7 @@ public sealed class AggregationWorker(IServiceScopeFactory scopes, TimeProvider 
         var oldHours = db.ZoneHourlyAggregates.Where(x => x.HourStartUtc < aggregateBefore)
             .OrderBy(x => x.HourStartUtc).Take(5000).Select(x => x.Id);
         await db.ZoneHourlyAggregates.Where(x => oldHours.Contains(x.Id)).ExecuteDeleteAsync(ct);
+        await db.CongestionEpisodes.Where(x => x.EndedAtUtc < episodeBefore).OrderBy(x => x.EndedAtUtc).Take(5000).ExecuteDeleteAsync(ct);
         await transaction.CommitAsync(ct);
     }
 }

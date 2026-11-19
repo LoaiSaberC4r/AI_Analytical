@@ -1,6 +1,8 @@
 using System.Buffers;
+using System.Diagnostics;
 using CameraAnalytics.Application.Abstractions;
 using CameraAnalytics.Application.Common;
+using CameraAnalytics.Infrastructure.Analytics;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
@@ -52,6 +54,8 @@ public sealed class MqttSubscriberBackgroundService(IServiceScopeFactory scopes,
             client.DisconnectedAsync += e =>
             {
                 status.Subscribed = false;
+                AnalyticsTelemetry.Connected.Record(0);
+                AnalyticsTelemetry.Subscribed.Record(0);
                 disconnected.TrySetResult();
                 logger.LogInformation("MQTT disconnected with reason {Reason}", e.Reason);
                 return Task.CompletedTask;
@@ -65,18 +69,23 @@ public sealed class MqttSubscriberBackgroundService(IServiceScopeFactory scopes,
 
                 try
                 {
+                    var started = Stopwatch.GetTimestamp();
                     var payload = e.ApplicationMessage.Payload;
                     var bytes = payload.IsSingleSegment ? payload.First
                         : payload.Slice(0, Math.Min(payload.Length, (long)options.MaxPayloadBytes + 1)).ToArray();
                     await using var scope = scopes.CreateAsyncScope();
                     var handler = scope.ServiceProvider.GetRequiredService<IAnalyticsIngestor>();
                     var outcome = await handler.Process(e.ApplicationMessage.Topic, bytes, clock.GetUtcNow().UtcDateTime, stoppingToken);
+                    var tag = new KeyValuePair<string, object?>("outcome", outcome.ToString());
+                    AnalyticsTelemetry.Deliveries.Add(1, tag);
                     await e.AcknowledgeAsync(stoppingToken);
+                    AnalyticsTelemetry.ReceiptToAck.Record(Stopwatch.GetElapsedTime(started).TotalMilliseconds, tag);
                     logger.LogDebug("MQTT message handled with outcome {Outcome}", outcome);
                 }
                 catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested) { }
                 catch (Exception e2)
                 {
+                    AnalyticsTelemetry.Retries.Add(1);
                     logger.LogWarning(e2, "MQTT message was left unacknowledged. Reconnecting to retry delivery.");
                     retry.TrySetResult();
                 }
@@ -87,12 +96,14 @@ public sealed class MqttSubscriberBackgroundService(IServiceScopeFactory scopes,
                 var result = await client.ConnectAsync(connectionOptions.Build(), stoppingToken);
                 if (result.ResultCode != MqttClientConnectResultCode.Success)
                     throw new InvalidOperationException($"Broker rejected the MQTT connection ({result.ResultCode}).");
+                AnalyticsTelemetry.Connected.Record(1);
                 // Always verify the configured subscription. Replacing the same filter leaves queued QoS 1 deliveries intact.
                 var subscribed = await client.SubscribeAsync(subscription, stoppingToken);
                 var granted = subscribed.Items.Select(x => (int)x.ResultCode).SingleOrDefault(-1);
                 if (granted < options.Qos || granted > 2)
                     throw new InvalidOperationException("Broker did not grant the configured MQTT subscription QoS.");
                 status.Subscribed = client.IsConnected;
+                AnalyticsTelemetry.Subscribed.Record(status.Subscribed ? 1 : 0);
                 logger.LogInformation("MQTT subscribed to {Filter} with QoS {Qos} and session present {SessionPresent}",
                     options.TopicFilter, options.Qos, result.IsSessionPresent);
                 await Task.WhenAny(disconnected.Task, retry.Task).WaitAsync(stoppingToken);
@@ -105,12 +116,14 @@ public sealed class MqttSubscriberBackgroundService(IServiceScopeFactory scopes,
             finally
             {
                 status.Subscribed = false;
+                AnalyticsTelemetry.Subscribed.Record(0);
                 if (client.IsConnected)
                 {
                     using var limit = new CancellationTokenSource(TimeSpan.FromSeconds(options.ConnectTimeoutSeconds));
                     try { await client.DisconnectAsync(factory.CreateClientDisconnectOptionsBuilder().Build(), limit.Token); }
                     catch (Exception e) { logger.LogDebug(e, "MQTT disconnect did not complete normally"); }
                 }
+                AnalyticsTelemetry.Connected.Record(0);
             }
 
             if (!stoppingToken.IsCancellationRequested)

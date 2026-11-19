@@ -13,6 +13,7 @@ using Microsoft.Extensions.Options;
 namespace CameraAnalytics.Infrastructure.BackgroundJobs;
 
 public sealed class FreshnessWorker(IServiceScopeFactory scopes, TimeProvider clock, IOptions<AnalyticsOptions> settings,
+    IOptions<MinuteAggregationOptions> minute,
     IAnalyticsNotifications notifications, ILogger<FreshnessWorker> logger) : BackgroundService
 {
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
@@ -53,13 +54,14 @@ public sealed class FreshnessWorker(IServiceScopeFactory scopes, TimeProvider cl
             state.StateVersion++;
             if (state.DataFreshness == DataFreshness.NoRecentData)
             {
+                await EpisodeStore.Close(db, state.AnalyticsSessionId, "Uncertain", "camera_no_recent_data", ct);
                 var visits = await db.TrackedVisits.Where(x => x.AnalyticsSessionId == state.AnalyticsSessionId
                     && (x.Status == VisitStatus.Active || x.Status == VisitStatus.TemporarilyMissing)).ToListAsync(ct);
                 foreach (var visit in visits)
                 {
                     VisitTracker.Resolve(visit, null, now, VisitStatus.Uncertain, "camera_no_recent_data");
                     await AggregateQueue.Mark(db, visit.CameraZoneId, state.SourceType, visit.ResolvedAtUtc!.Value,
-                        visit.ResolvedAtUtc.Value, now, ct);
+                        visit.ResolvedAtUtc.Value, now, minute.Value.Enabled, ct);
                 }
             }
             notices.Add(new(state.Camera.SiteId, state.CameraId, state.AnalyticsSessionId, state.StateVersion,

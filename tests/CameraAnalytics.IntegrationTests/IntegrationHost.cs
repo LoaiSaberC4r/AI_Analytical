@@ -41,7 +41,7 @@ internal sealed class IntegrationHost : WebApplicationFactory<Program>
     private readonly string connection;
 
     public IntegrationHost(bool mqtt = false, bool aggregate = false, bool migrate = true, bool signalR = true,
-        string? cameraExternalId = null)
+        string? cameraExternalId = null, bool minute = false, bool wildcard = false)
     {
         TestCamera = cameraExternalId ?? "test-" + Guid.NewGuid().ToString("N");
         connection = new SqlConnectionStringBuilder(SqlConnection!)
@@ -54,13 +54,17 @@ internal sealed class IntegrationHost : WebApplicationFactory<Program>
             ["Database:ApplyMigrationsOnStartup"] = migrate.ToString(),
             ["Mqtt:Enabled"] = mqtt.ToString(),
             ["Mqtt:ClientId"] = ClientId,
-            ["Mqtt:TopicFilter"] = Topic,
+            ["Mqtt:TopicFilter"] = wildcard ? "cameras/+/analytics" : Topic,
             ["Mqtt:Host"] = BrokerHost ?? "127.0.0.1",
             ["Mqtt:Port"] = BrokerPort.ToString(),
             ["Mqtt:ReconnectDelaySeconds"] = "2",
             ["SignalR:Enabled"] = signalR.ToString(),
             ["Aggregation:Enabled"] = aggregate.ToString(),
+            ["Alerts:Enabled"] = "false",
             ["Aggregation:IntervalSeconds"] = "1",
+            ["MinuteAggregation:Enabled"] = minute.ToString(),
+            ["MinuteAggregation:IntervalSeconds"] = "1",
+            ["MinuteAggregation:BackfillDays"] = "0",
             ["Analytics:StaleAfterSeconds"] = "3",
             ["Analytics:NoRecentDataAfterSeconds"] = "8",
             ["Analytics:TrackMissingGraceSeconds"] = "2"
@@ -86,9 +90,9 @@ internal sealed class IntegrationHost : WebApplicationFactory<Program>
             .Process(topic ?? Topic, json, receivedAt ?? DateTime.UtcNow, default);
     }
 
-    public async Task<(SiteData Site, CameraData Camera, ZoneData Zone)> Register(HttpClient client)
+    public async Task<(SiteData Site, CameraData Camera, ZoneData Zone)> Register(HttpClient client, string timeZoneId = "Africa/Cairo")
     {
-        var site = await Post<SiteData>(client, "sites", new { name = "Main Mall", code = "MALL-001", timeZoneId = "Africa/Cairo" });
+        var site = await Post<SiteData>(client, "sites", new { name = "Main Mall", code = "MALL-001", timeZoneId });
         var camera = await Post<CameraData>(client, "cameras", new { name = "Main Entrance Camera", siteId = site.Id, externalCameraId = TestCamera });
         var zone = await Post<ZoneData>(client, $"cameras/{camera.Id}/zones", new { name = "Reception", externalZoneId = "zone_01", capacity = 20 });
         return (site, camera, zone);

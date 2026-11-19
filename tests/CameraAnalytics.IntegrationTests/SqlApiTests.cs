@@ -47,8 +47,22 @@ public sealed class SqlApiTests
         Assert.Equal("http://localhost:4200", Assert.Single(cors.Headers.GetValues("Access-Control-Allow-Origin")));
         Assert.Equal(HttpStatusCode.OK, (await client.GetAsync("api/v1/health/ready")).StatusCode);
         var openApi = await client.GetFromJsonAsync<JsonElement>("swagger/v1/swagger.json");
-        Assert.Equal(37, openApi.GetProperty("paths").EnumerateObject().Sum(path =>
-            path.Value.EnumerateObject().Count(verb => verb.Name is "get" or "post" or "put" or "patch")));
+        var paths = openApi.GetProperty("paths");
+        var baseline = new Dictionary<string, string[]>
+        {
+            ["get"] = ["sites", "sites/{id}", "cameras", "cameras/{id}", "cameras/{cameraId}/zones", "zones/{id}",
+                "sites/{siteId}/live", "cameras/{cameraId}/live", "zones/{zoneId}/live", "monitoring/status", "health/live", "health/ready",
+                "analytics/overview", "analytics/zones/rankings", "analytics/zones/{zoneId}/summary", "analytics/zones/{zoneId}/timeseries",
+                "analytics/occupancy", "analytics/occupancy/utilization", "analytics/peak-hours", "analytics/traffic", "analytics/traffic/trends",
+                "analytics/dwell", "analytics/dwell/rankings", "analytics/wrong-way", "analytics/staff", "analytics/sessions",
+                "analytics/sessions/{id}", "analytics/sessions/{id}/report"],
+            ["post"] = ["sites", "cameras", "cameras/{cameraId}/zones"],
+            ["put"] = ["sites/{id}", "cameras/{id}", "zones/{id}"],
+            ["patch"] = ["sites/{id}/status", "cameras/{id}/status", "zones/{id}/status"]
+        };
+        foreach (var (verb, routes) in baseline)
+            foreach (var route in routes)
+                Assert.True(paths.TryGetProperty($"/api/v1/{route}", out var path) && path.TryGetProperty(verb, out _), $"{verb} {route}");
     }
 
     [SqlFact]
